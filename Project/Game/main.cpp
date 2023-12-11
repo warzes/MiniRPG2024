@@ -1,4 +1,5 @@
-﻿#include "glfw.h"
+﻿#include "Engine.h"
+#include "glfw.h"
 
 static GLFWwindow* window = NULL;
 static int swapAndPollInput();
@@ -35,8 +36,10 @@ static void glMessageCallback(GLenum, GLenum, GLuint, GLenum, GLsizei, const cha
 {
 	glfwErrorCallback(0, message);
 }
-
-int main() 
+//-----------------------------------------------------------------------------
+int main(
+	[[maybe_unused]] int   argc,
+	[[maybe_unused]] char* argv[])
 {
 	// GLFW + OpenGL init
 	glfwInit();
