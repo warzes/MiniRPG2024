@@ -1,31 +1,17 @@
 ﻿#include "Engine.h"
-#include <glfw.h>
 //-----------------------------------------------------------------------------
-void glfwErrorCallback(int, const char* message)
+class TestApp final : public IApp
 {
-	puts(message);
-}
+public:
+	TestApp(Engine& engine) : IApp(engine) {}
+	AppCreateInfo GetCreateInfo() final { return {}; }
+};
 //-----------------------------------------------------------------------------
 int main(
 	[[maybe_unused]] int   argc,
 	[[maybe_unused]] char* argv[])
 {
-	glfwInit();
-	glfwSetErrorCallback(glfwErrorCallback);
-
-	GLFWwindow* window = glfwCreateWindow(1024, 768, "Game", nullptr, nullptr);
-
-	while (glfwWindowShouldClose(window) == GLFW_FALSE)
-	{
-		int display_w, display_h;
-		glfwGetFramebufferSize(window, &display_w, &display_h);
-
-		glfwSwapBuffers(window);
-		glfwPollEvents();
-	}
-
-
-	glfwTerminate();
+	Engine::Run<TestApp>();
 	return 0;
 }
 //-----------------------------------------------------------------------------
