@@ -2,5 +2,24 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="..\3rdparty\glfw.c">
+      <Filter>Engine\3rdparty</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Engine">
+      <UniqueIdentifier>{831bb533-340b-434b-947d-474a6d5b88a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Game">
+      <UniqueIdentifier>{1351acee-69c2-4459-8a77-1da98da0a8d3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\3rdparty">
+      <UniqueIdentifier>{d0f9d109-8190-4e84-acb4-2d1a9e119ee5}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\3rdparty\glfw.h">
+      <Filter>Engine\3rdparty</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
