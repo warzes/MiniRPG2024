@@ -19,7 +19,8 @@
 #	include <emscripten/html5.h>      // Emscripten HTML5 library
 #endif // __EMSCRIPTEN__
 
-#include <glmHeader.h>
+#include <glmConfig.h>
+#include <glm/glm.hpp>
 
 #if defined(_MSC_VER)
 #	pragma warning(pop)

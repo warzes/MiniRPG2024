@@ -90,12 +90,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\3rdparty\glfw.c" />
+    <ClCompile Include="..\3rdparty\stb.cpp" />
     <ClCompile Include="Engine.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\3rdparty\glfw.h" />
-    <ClInclude Include="..\3rdparty\glmHeader.h" />
+    <ClInclude Include="..\3rdparty\glmConfig.h" />
     <ClInclude Include="..\3rdparty\glm\common.hpp" />
     <ClInclude Include="..\3rdparty\glm\detail\compute_common.hpp" />
     <ClInclude Include="..\3rdparty\glm\detail\compute_vector_relational.hpp" />
@@ -383,6 +384,8 @@
     <ClInclude Include="..\3rdparty\glm\vec3.hpp" />
     <ClInclude Include="..\3rdparty\glm\vec4.hpp" />
     <ClInclude Include="..\3rdparty\glm\vector_relational.hpp" />
+    <ClInclude Include="..\3rdparty\stb\stb_image.h" />
+    <ClInclude Include="..\3rdparty\stb\stb_truetype.h" />
     <ClInclude Include="Engine.h" />
   </ItemGroup>
   <ItemGroup>

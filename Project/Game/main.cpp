@@ -1,5 +1,4 @@
 ﻿#include "Engine.h"
-#include "glfw.h"
 
 static GLFWwindow* window = NULL;
 static int swapAndPollInput();

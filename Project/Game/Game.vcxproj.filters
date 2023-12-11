@@ -2,11 +2,14 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="..\3rdparty\glfw.c">
-      <Filter>Engine\3rdparty</Filter>
-    </ClCompile>
     <ClCompile Include="Engine.cpp">
       <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\glfw.c">
+      <Filter>Engine\3rdparty\glfw</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\stb.cpp">
+      <Filter>Engine\3rdparty\stb</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -40,15 +43,18 @@
     <Filter Include="Engine\3rdparty\glm\glm\simd">
       <UniqueIdentifier>{aeabe199-3d1b-4a6b-9073-289f1777b1bd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\3rdparty\glfw">
+      <UniqueIdentifier>{f4aa85f6-727b-482f-bea0-4373fba94bb4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\3rdparty\stb">
+      <UniqueIdentifier>{f8431f6f-f5e6-45bb-9c9d-cccc4d4d5c0a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\3rdparty\glfw.h">
-      <Filter>Engine\3rdparty</Filter>
-    </ClInclude>
     <ClInclude Include="Engine.h">
       <Filter>Engine</Filter>
     </ClInclude>
-    <ClInclude Include="..\3rdparty\glmHeader.h">
+    <ClInclude Include="..\3rdparty\glmConfig.h">
       <Filter>Engine\3rdparty\glm</Filter>
     </ClInclude>
     <ClInclude Include="..\3rdparty\glm\common.hpp">
@@ -911,6 +917,15 @@
     </ClInclude>
     <ClInclude Include="..\3rdparty\glm\simd\vector_relational.h">
       <Filter>Engine\3rdparty\glm\glm\simd</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\glfw.h">
+      <Filter>Engine\3rdparty\glfw</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\stb\stb_image.h">
+      <Filter>Engine\3rdparty\stb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\stb\stb_truetype.h">
+      <Filter>Engine\3rdparty\stb</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
