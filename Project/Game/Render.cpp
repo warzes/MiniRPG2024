@@ -54,7 +54,7 @@ constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
 
 
-wgpu::Device device;
+//wgpu::Device device;
 
 wgpu::Buffer indexBuffer;
 wgpu::Buffer vertexBuffer;
@@ -62,13 +62,13 @@ wgpu::Buffer vertexBuffer;
 wgpu::Texture texture;
 wgpu::Sampler sampler;
 
-wgpu::Queue queue;
+//wgpu::Queue queue;
 wgpu::TextureView depthStencilView;
 wgpu::RenderPipeline pipeline;
 wgpu::BindGroup bindGroup;
 
 
-void initBuffers()
+void initBuffers(wgpu::Device device)
 {
 	static const uint32_t indexData[3] = {
 		0,
@@ -85,7 +85,8 @@ void initBuffers()
 		wgpu::BufferUsage::Vertex);
 }
 
-void initTextures() {
+void initTextures(wgpu::Device device, wgpu::Queue queue)
+{
 	wgpu::TextureDescriptor descriptor;
 	descriptor.dimension = wgpu::TextureDimension::e2D;
 	descriptor.size.width = 1024;
@@ -134,37 +135,6 @@ wgpu::TextureView CreateDefaultDepthStencilView(const wgpu::Device& device) {
 	return depthStencilTexture.CreateView();
 }
 
-void frame() 
-{
-	wgpu::TextureView backbufferView = swapChain.GetCurrentTextureView();
-	dawn::utils::ComboRenderPassDescriptor renderPass({ backbufferView }, depthStencilView);
-
-	wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
-	{
-		wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&renderPass);
-		pass.SetPipeline(pipeline);
-		pass.SetBindGroup(0, bindGroup);
-		pass.SetVertexBuffer(0, vertexBuffer);
-		pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32);
-		pass.DrawIndexed(3);
-		pass.End();
-	}
-
-	wgpu::CommandBuffer commands = encoder.Finish();
-	queue.Submit(1, &commands);
-	swapChain.Present();
-	if (cmdBufType == CmdBufType::Terrible) {
-		bool c2sSuccess = c2sBuf->Flush();
-		bool s2cSuccess = s2cBuf->Flush();
-
-		DAWN_ASSERT(c2sSuccess && s2cSuccess);
-	}
-}
-
-void ProcessEvents() {
-	dawn::native::InstanceProcessEvents(instance->Get());
-}
-
 struct RenderData
 {
 	std::unique_ptr<dawn::native::Instance> instance;
@@ -175,135 +145,21 @@ struct RenderData
 
 bool Render::Create(void* glfwWindow)
 {
-#if 0
-	WGPUInstanceDescriptor instanceDescriptor{};
-	instanceDescriptor.features.timedWaitAnyEnable = true;
-	instance = std::make_unique<dawn::native::Instance>(&instanceDescriptor);
+	m_data = new RenderData();
 
-	wgpu::RequestAdapterOptions options = {};
-	options.backendType = wgpu::BackendType::D3D12;
-
-	// Get an adapter for the backend to use, and create the device.
-	auto adapters = instance->EnumerateAdapters(&options);
-	wgpu::DawnAdapterPropertiesPowerPreference power_props{};
-	wgpu::AdapterProperties adapterProperties{};
-	adapterProperties.nextInChain = &power_props;
-	// Find the first adapter which satisfies the adapterType requirement.
-	auto isAdapterType = [&adapterProperties](const auto& adapter) -> bool {
-		// picks the first adapter when adapterType is unknown.
-		if (adapterType == wgpu::AdapterType::Unknown)
-		{
-			return true;
-		}
-		adapter.GetProperties(&adapterProperties);
-		return adapterProperties.adapterType == adapterType;
-		};
-	auto preferredAdapter = std::find_if(adapters.begin(), adapters.end(), isAdapterType);
-	if (preferredAdapter == adapters.end())
-	{
-		puts("Failed to find an adapter! Please try another adapter type.");
+	if (!createDevice(glfwWindow))
 		return false;
-	}
 
-	std::vector<const char*> enableToggleNames;
-	std::vector<const char*> disabledToggleNames;
-	//for (const std::string& toggle : enableToggles) {
-	//	enableToggleNames.push_back(toggle.c_str());
-	//}
+	initBuffers(m_data->device);
+	initTextures(m_data->device, m_data->queue);
 
-	//for (const std::string& toggle : disableToggles) {
-	//	disabledToggleNames.push_back(toggle.c_str());
-	//}
-	WGPUDawnTogglesDescriptor toggles;
-	toggles.chain.sType = WGPUSType_DawnTogglesDescriptor;
-	toggles.chain.next = nullptr;
-	toggles.enabledToggles = enableToggleNames.data();
-	toggles.enabledToggleCount = enableToggleNames.size();
-	toggles.disabledToggles = disabledToggleNames.data();
-	toggles.disabledToggleCount = disabledToggleNames.size();
-
-	WGPUDeviceDescriptor deviceDesc = {};
-	deviceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&toggles);
-
-	WGPUDevice backendDevice = preferredAdapter->CreateDevice(&deviceDesc);
-	DawnProcTable backendProcs = dawn::native::GetProcs();
-
-	// Create the swapchain
-	auto surfaceChainedDesc = wgpu::glfw::SetupWindowAndGetSurfaceDescriptor((GLFWwindow*)glfwWindow);
-	WGPUSurfaceDescriptor surfaceDesc;
-	surfaceDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(surfaceChainedDesc.get());
-	WGPUSurface surface = backendProcs.instanceCreateSurface(instance->Get(), &surfaceDesc);
-
-	WGPUSwapChainDescriptor swapChainDesc = {};
-	swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
-	swapChainDesc.format = static_cast<WGPUTextureFormat>(GetPreferredSwapChainTextureFormat());
-	swapChainDesc.width = kWidth;
-	swapChainDesc.height = kHeight;
-	swapChainDesc.presentMode = WGPUPresentMode_Mailbox;
-	WGPUSwapChain backendSwapChain =
-		backendProcs.deviceCreateSwapChain(backendDevice, surface, &swapChainDesc);
-
-	// Choose whether to use the backend procs and devices/swapchains directly, or set up the wire.
-	WGPUDevice cDevice = nullptr;
-	DawnProcTable procs;
-
-	switch (cmdBufType) {
-	case CmdBufType::None:
-		procs = backendProcs;
-		cDevice = backendDevice;
-		swapChain = wgpu::SwapChain::Acquire(backendSwapChain);
-		break;
-
-	case CmdBufType::Terrible: {
-		c2sBuf = new dawn::utils::TerribleCommandBuffer();
-		s2cBuf = new dawn::utils::TerribleCommandBuffer();
-
-		dawn::wire::WireServerDescriptor serverDesc = {};
-		serverDesc.procs = &backendProcs;
-		serverDesc.serializer = s2cBuf;
-
-		wireServer = new dawn::wire::WireServer(serverDesc);
-		c2sBuf->SetHandler(wireServer);
-
-		dawn::wire::WireClientDescriptor clientDesc = {};
-		clientDesc.serializer = c2sBuf;
-
-		wireClient = new dawn::wire::WireClient(clientDesc);
-		procs = dawn::wire::client::GetProcs();
-		s2cBuf->SetHandler(wireClient);
-
-		auto deviceReservation = wireClient->ReserveDevice();
-		wireServer->InjectDevice(backendDevice, deviceReservation.id,
-			deviceReservation.generation);
-		cDevice = deviceReservation.device;
-
-		auto swapChainReservation = wireClient->ReserveSwapChain(cDevice, &swapChainDesc);
-		wireServer->InjectSwapChain(backendSwapChain, swapChainReservation.id,
-			swapChainReservation.generation, deviceReservation.id,
-			deviceReservation.generation);
-		swapChain = wgpu::SwapChain::Acquire(swapChainReservation.swapchain);
-	} break;
-	}
-
-	dawnProcSetProcs(&procs);
-	procs.deviceSetUncapturedErrorCallback(cDevice, PrintDeviceError, nullptr);
-	procs.deviceSetDeviceLostCallback(cDevice, DeviceLostCallback, nullptr);
-	procs.deviceSetLoggingCallback(cDevice, DeviceLogCallback, nullptr);
-
-	device = wgpu::Device::Acquire(cDevice);
-
-	queue = device.GetQueue();
-
-	initBuffers();
-	initTextures();
-
-	wgpu::ShaderModule vsModule = dawn::utils::CreateShaderModule(device, R"(
+	wgpu::ShaderModule vsModule = dawn::utils::CreateShaderModule(m_data->device, R"(
         @vertex fn main(@location(0) pos : vec4f)
                             -> @builtin(position) vec4f {
             return pos;
         })");
 
-	wgpu::ShaderModule fsModule = dawn::utils::CreateShaderModule(device, R"(
+	wgpu::ShaderModule fsModule = dawn::utils::CreateShaderModule(m_data->device, R"(
         @group(0) @binding(0) var mySampler: sampler;
         @group(0) @binding(1) var myTexture : texture_2d<f32>;
 
@@ -313,17 +169,17 @@ bool Render::Create(void* glfwWindow)
         })");
 
 	auto bgl = dawn::utils::MakeBindGroupLayout(
-		device, {
+		m_data->device, {
 					{0, wgpu::ShaderStage::Fragment, wgpu::SamplerBindingType::Filtering},
 					{1, wgpu::ShaderStage::Fragment, wgpu::TextureSampleType::Float},
 		});
 
-	wgpu::PipelineLayout pl = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
+	wgpu::PipelineLayout pl = dawn::utils::MakeBasicPipelineLayout(m_data->device, &bgl);
 
-	depthStencilView = CreateDefaultDepthStencilView(device);
+	depthStencilView = CreateDefaultDepthStencilView(m_data->device);
 
 	dawn::utils::ComboRenderPipelineDescriptor descriptor;
-	descriptor.layout = dawn::utils::MakeBasicPipelineLayout(device, &bgl);
+	descriptor.layout = dawn::utils::MakeBasicPipelineLayout(m_data->device, &bgl);
 	descriptor.vertex.module = vsModule;
 	descriptor.vertex.bufferCount = 1;
 	descriptor.cBuffers[0].arrayStride = 4 * sizeof(float);
@@ -333,19 +189,11 @@ bool Render::Create(void* glfwWindow)
 	descriptor.cTargets[0].format = GetPreferredSwapChainTextureFormat();
 	descriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
-	pipeline = device.CreateRenderPipeline(&descriptor);
+	pipeline = m_data->device.CreateRenderPipeline(&descriptor);
 
 	wgpu::TextureView view = texture.CreateView();
 
-	bindGroup = dawn::utils::MakeBindGroup(device, bgl, { {0, sampler}, {1, view} });
-
-#else
-	m_data = new RenderData();
-
-	if (!createDevice(glfwWindow))
-		return false;
-
-#endif
+	bindGroup = dawn::utils::MakeBindGroup(m_data->device, bgl, { {0, sampler}, {1, view} });
 
 	return true;
 }
@@ -376,7 +224,7 @@ void Render::Frame()
 	renderPassColorAttachment.storeOp = wgpu::StoreOp::Store;
 	renderPassColorAttachment.clearValue = wgpu::Color{ 0.95f, 0.35f, 0.49f, 1.0f };
 
-	//dawn::utils::ComboRenderPassDescriptor renderPassDesc({ backbufferView }, depthStencilView);
+	dawn::utils::ComboRenderPassDescriptor renderPassDesc({ backbufferView }, depthStencilView);
 	dawn::utils::ComboRenderPassDescriptor renderPassDesc{};
 	renderPassDesc.colorAttachmentCount = 1;
 	renderPassDesc.colorAttachments = &renderPassColorAttachment;
@@ -385,11 +233,11 @@ void Render::Frame()
 	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
 		wgpu::RenderPassEncoder renderPass = encoder.BeginRenderPass(&renderPassDesc);
-		//pass.SetPipeline(pipeline);
-		//pass.SetBindGroup(0, bindGroup);
-		//pass.SetVertexBuffer(0, vertexBuffer);
-		//pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32);
-		//pass.DrawIndexed(3);
+		renderPass.SetPipeline(pipeline);
+		renderPass.SetBindGroup(0, bindGroup);
+		renderPass.SetVertexBuffer(0, vertexBuffer);
+		renderPass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32);
+		renderPass.DrawIndexed(3);
 		renderPass.End();
 	}
 
