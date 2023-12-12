@@ -1,12 +1,5 @@
 #pragma once
 
-#include <Dawn/webgpu.h>
-#include <Dawn/native/DawnNative.h>
-#include <webgpu/webgpu_glfw.h>
-#include <Dawn/utils/WGPUHelpers.h>
-#include <Dawn/utils/ComboRenderPipelineDescriptor.h>
-#include <Dawn/dawn_proc.h>
-
 #include <stb/stb_image.h>
 #define STBIR_DEFAULT_FILTER_DOWNSAMPLE STBIR_FILTER_BOX
 #include <stb/stb_image_resize2.h>
@@ -14,7 +7,6 @@
 wgpu::ImageCopyBuffer CreateImageCopyBuffer(wgpu::Buffer buffer, uint64_t offset = 0, uint32_t bytesPerRow = wgpu::kCopyStrideUndefined, uint32_t rowsPerImage = wgpu::kCopyStrideUndefined);
 wgpu::ImageCopyTexture CreateImageCopyTexture(wgpu::Texture texture, uint32_t level = 0, wgpu::Origin3D origin = { 0, 0, 0 }, wgpu::TextureAspect aspect = wgpu::TextureAspect::All);
 wgpu::TextureDataLayout CreateTextureDataLayout(uint64_t offset, uint32_t bytesPerRow, uint32_t rowsPerImage = wgpu::kCopyStrideUndefined);
-
 
 wgpu::ShaderModule CreateShaderModule(const wgpu::Device& device, const char* source)
 {

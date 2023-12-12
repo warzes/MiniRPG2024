@@ -963,6 +963,12 @@
     <ClInclude Include="TestApp.h">
       <Filter>Test</Filter>
     </ClInclude>
+    <ClInclude Include="RenderResources.h">
+      <Filter>Engine\Private</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderCore.h">
+      <Filter>Engine\Private</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\3rdparty\glm\detail\func_common.inl">
