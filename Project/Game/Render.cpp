@@ -1,4 +1,6 @@
 #include "Engine.h"
+#include "RenderUtils.h"
+
 
 void PrintDeviceError(WGPUErrorType errorType, const char* message, void*) {
 	const char* errorTypeName = "";
@@ -43,22 +45,6 @@ wgpu::Sampler sampler;
 wgpu::RenderPipeline pipeline;
 wgpu::BindGroup bindGroup;
 
-
-void initBuffers(wgpu::Device device)
-{
-	static const uint32_t indexData[3] = {
-		0,
-		1,
-		2,
-	};
-	indexBuffer = dawn::utils::CreateBufferFromData(device, indexData, sizeof(indexData), wgpu::BufferUsage::Index);
-
-	static const float vertexData[12] = {
-		0.0f, 0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, 0.0f, 1.0f,
-	};
-	vertexBuffer = dawn::utils::CreateBufferFromData(device, vertexData, sizeof(vertexData), wgpu::BufferUsage::Vertex);
-}
-
 void initTextures(wgpu::Device device, wgpu::Queue queue)
 {
 	wgpu::TextureDescriptor descriptor;
@@ -80,12 +66,9 @@ void initTextures(wgpu::Device device, wgpu::Queue queue)
 		data[i] = static_cast<uint8_t>(i % 253);
 	}
 
-	wgpu::Buffer stagingBuffer = dawn::utils::CreateBufferFromData(
-		device, data.data(), static_cast<uint32_t>(data.size()), wgpu::BufferUsage::CopySrc);
-	wgpu::ImageCopyBuffer imageCopyBuffer =
-		dawn::utils::CreateImageCopyBuffer(stagingBuffer, 0, 4 * 1024);
-	wgpu::ImageCopyTexture imageCopyTexture =
-		dawn::utils::CreateImageCopyTexture(texture, 0, { 0, 0, 0 });
+	wgpu::Buffer stagingBuffer = CreateBuffer(device, data.data(), static_cast<uint32_t>(data.size()), wgpu::BufferUsage::CopySrc);
+	wgpu::ImageCopyBuffer imageCopyBuffer = CreateImageCopyBuffer(stagingBuffer, 0, 4 * 1024);
+	wgpu::ImageCopyTexture imageCopyTexture = CreateImageCopyTexture(texture, 0, { 0, 0, 0 });
 	wgpu::Extent3D copySize = { 1024, 1024, 1 };
 
 	wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
@@ -111,16 +94,21 @@ bool Render::Create(void* glfwWindow)
 	if (!createDevice(glfwWindow))
 		return false;
 
-	initBuffers(m_data->device);
+	constexpr uint32_t indexData[] = { 0, 1, 2 };
+	indexBuffer = CreateBuffer(m_data->device, indexData, sizeof(indexData), wgpu::BufferUsage::Index);
+
+	constexpr float vertexData[] = { 0.0f, 0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, 0.0f, 1.0f };
+	vertexBuffer = CreateBuffer(m_data->device, vertexData, sizeof(vertexData), wgpu::BufferUsage::Vertex);
+
 	initTextures(m_data->device, m_data->queue);
 
-	wgpu::ShaderModule vsModule = dawn::utils::CreateShaderModule(m_data->device, R"(
+	wgpu::ShaderModule vsModule = CreateShaderModule(m_data->device, R"(
         @vertex fn main(@location(0) pos : vec4f)
                             -> @builtin(position) vec4f {
             return pos;
         })");
 
-	wgpu::ShaderModule fsModule = dawn::utils::CreateShaderModule(m_data->device, R"(
+	wgpu::ShaderModule fsModule = CreateShaderModule(m_data->device, R"(
         @group(0) @binding(0) var mySampler: sampler;
         @group(0) @binding(1) var myTexture : texture_2d<f32>;
 

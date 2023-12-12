@@ -58,6 +58,9 @@
     <Filter Include="Engine\3rdparty\dawn">
       <UniqueIdentifier>{d7fb6cbf-e951-4a9c-9926-8b34a04879fe}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Engine\Private">
+      <UniqueIdentifier>{70df25c5-7ab4-49c1-b2e6-83816e54d9b5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Engine.h">
@@ -938,6 +941,12 @@
     </ClInclude>
     <ClInclude Include="Render.h">
       <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderUtils.h">
+      <Filter>Engine\Private</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\stb\stb_image_resize2.h">
+      <Filter>Engine\3rdparty\stb</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

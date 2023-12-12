@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <filesystem>
 
 #if defined(_WIN32)
 #endif // _WIN32
@@ -22,14 +23,6 @@
 
 #include <glmConfig.h>
 #include <glm/glm.hpp>
-
-#include <Dawn/webgpu.h>
-#include <Dawn/native/DawnNative.h>
-#include <webgpu/webgpu_glfw.h>
-#include <Dawn/utils/WGPUHelpers.h>
-#include <Dawn/utils/ComboRenderPipelineDescriptor.h>
-#include <Dawn/dawn_proc.h>
-
 
 #if defined(_MSC_VER)
 #	pragma warning(pop)
