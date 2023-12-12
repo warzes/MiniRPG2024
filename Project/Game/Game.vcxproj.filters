@@ -11,6 +11,12 @@
     <ClCompile Include="..\3rdparty\stb.cpp">
       <Filter>Engine\3rdparty\stb</Filter>
     </ClCompile>
+    <ClCompile Include="..\3rdparty\DawnLib.cpp">
+      <Filter>Engine\3rdparty\dawn</Filter>
+    </ClCompile>
+    <ClCompile Include="Render.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">
@@ -48,6 +54,9 @@
     </Filter>
     <Filter Include="Engine\3rdparty\stb">
       <UniqueIdentifier>{f8431f6f-f5e6-45bb-9c9d-cccc4d4d5c0a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\3rdparty\dawn">
+      <UniqueIdentifier>{d7fb6cbf-e951-4a9c-9926-8b34a04879fe}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -926,6 +935,9 @@
     </ClInclude>
     <ClInclude Include="..\3rdparty\stb\stb_truetype.h">
       <Filter>Engine\3rdparty\stb</Filter>
+    </ClInclude>
+    <ClInclude Include="Render.h">
+      <Filter>Engine</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

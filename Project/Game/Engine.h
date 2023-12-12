@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <optional>
 
 #if defined(_WIN32)
 #endif // _WIN32
@@ -21,6 +22,17 @@
 
 #include <glmConfig.h>
 #include <glm/glm.hpp>
+
+#include <Dawn/webgpu.h>
+#include <Dawn/native/DawnNative.h>
+#include <webgpu/webgpu_glfw.h>
+#include <Dawn/wire/WireServer.h>
+#include <Dawn/wire/WireClient.h>
+#include <Dawn/utils/TerribleCommandBuffer.h>
+#include <Dawn/utils/WGPUHelpers.h>
+#include <Dawn/utils/ComboRenderPipelineDescriptor.h>
+#include <Dawn/dawn_proc.h>
+
 
 #if defined(_MSC_VER)
 #	pragma warning(pop)
@@ -33,6 +45,11 @@
 #	pragma warning(push)
 #	pragma warning(disable : 4514)
 #endif
+
+//=============================================================================
+// Engine Header
+//=============================================================================
+#include "Render.h"
 
 //=============================================================================
 // App
@@ -59,7 +76,7 @@ public:
 	virtual AppCreateInfo GetCreateInfo() = 0;
 
 	virtual bool Init() = 0;
-	virtual bool Close() = 0;
+	virtual void Close() = 0;
 	virtual void Update() = 0;
 	virtual void Frame() = 0;
 
@@ -96,6 +113,7 @@ private:
 
 	std::unique_ptr<IApp> m_app;
 	EngineData* m_data = nullptr;
+	Render m_render;
 };
 
 //=============================================================================

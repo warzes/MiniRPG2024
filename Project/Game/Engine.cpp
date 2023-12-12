@@ -22,6 +22,9 @@
 #	pragma warning(pop)
 #endif
 
+constexpr uint32_t kWidth = 1024;
+constexpr uint32_t kHeight = 768;
+
 struct EngineData
 {
 	GLFWwindow* window = nullptr;
@@ -44,11 +47,13 @@ void Engine::run(std::unique_ptr<IApp> app)
 			int display_w, display_h;
 			glfwGetFramebufferSize(m_data->window, &display_w, &display_h);
 
-			glfwSwapBuffers(m_data->window);
+			m_render.Update();
+			m_render.Frame();
 			glfwPollEvents();
 		}
 	}
 
+	m_render.Destroy();
 	glfwDestroyWindow(m_data->window);
 	glfwTerminate();
 	delete m_data;
@@ -56,18 +61,24 @@ void Engine::run(std::unique_ptr<IApp> app)
 
 bool Engine::init()
 {
+	glfwSetErrorCallback(glfwErrorCallback);
 	if (!glfwInit())
 	{
 		puts("Could not initialize GLFW!");
 		return false;
 	}
-	glfwSetErrorCallback(glfwErrorCallback);
-
-	m_data->window = glfwCreateWindow(1024, 768, "Game", nullptr, nullptr);
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
+	m_data->window = glfwCreateWindow(kWidth, kHeight, "Game", nullptr, nullptr);
 	if (!m_data->window)
 	{
 		puts("Could not open window!");
-		glfwTerminate();
+		return false;
+	}
+
+	if (!m_render.Create((void*)m_data->window))
+	{
+		puts("Render system not create!");
 		return false;
 	}
 
