@@ -1,16 +1,5 @@
 ﻿#include "Engine.h"
-//-----------------------------------------------------------------------------
-class TestApp final : public IApp
-{
-public:
-	TestApp(Engine& engine) : IApp(engine) {}
-	AppCreateInfo GetCreateInfo() final { return {}; }
-
-	bool Init() final { return true; }
-	virtual void Close() final {}
-	virtual void Update() final {}
-	virtual void Frame() final {}
-};
+#include "TestApp.h"
 //-----------------------------------------------------------------------------
 int main(
 	[[maybe_unused]] int   argc,

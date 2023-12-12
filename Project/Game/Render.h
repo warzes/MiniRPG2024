@@ -8,7 +8,6 @@ public:
 	bool Create(void* glfwWindow);
 	void Destroy();
 
-	void Update();
 	void Frame();
 
 private:

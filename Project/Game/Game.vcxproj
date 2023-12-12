@@ -94,9 +94,11 @@
     <ClCompile Include="..\3rdparty\DawnLib.cpp" />
     <ClCompile Include="..\3rdparty\glfw.c" />
     <ClCompile Include="..\3rdparty\stb.cpp" />
+    <ClCompile Include="Core.cpp" />
     <ClCompile Include="Engine.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Render.cpp" />
+    <ClCompile Include="TestApp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\3rdparty\glfw.h" />
@@ -391,9 +393,11 @@
     <ClInclude Include="..\3rdparty\stb\stb_image.h" />
     <ClInclude Include="..\3rdparty\stb\stb_image_resize2.h" />
     <ClInclude Include="..\3rdparty\stb\stb_truetype.h" />
+    <ClInclude Include="Core.h" />
     <ClInclude Include="Engine.h" />
     <ClInclude Include="Render.h" />
     <ClInclude Include="RenderUtils.h" />
+    <ClInclude Include="TestApp.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\3rdparty\glm\detail\func_common.inl" />

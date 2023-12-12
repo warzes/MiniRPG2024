@@ -39,6 +39,7 @@
 //=============================================================================
 // Engine Header
 //=============================================================================
+#include "Core.h"
 #include "Render.h"
 
 //=============================================================================
@@ -100,6 +101,10 @@ public:
 private:
 	void run(std::unique_ptr<IApp> app);
 	bool init();
+	void close();
+	bool isRun() const;
+
+	void exit();
 
 	std::unique_ptr<IApp> m_app;
 	EngineData* m_data = nullptr;

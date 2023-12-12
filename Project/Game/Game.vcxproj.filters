@@ -17,6 +17,12 @@
     <ClCompile Include="Render.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
+    <ClCompile Include="Core.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="TestApp.cpp">
+      <Filter>Test</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">
@@ -60,6 +66,9 @@
     </Filter>
     <Filter Include="Engine\Private">
       <UniqueIdentifier>{70df25c5-7ab4-49c1-b2e6-83816e54d9b5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Test">
+      <UniqueIdentifier>{d6317154-a0e7-4f57-bb0d-0fe9d7a887f1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -947,6 +956,12 @@
     </ClInclude>
     <ClInclude Include="..\3rdparty\stb\stb_image_resize2.h">
       <Filter>Engine\3rdparty\stb</Filter>
+    </ClInclude>
+    <ClInclude Include="Core.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="TestApp.h">
+      <Filter>Test</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

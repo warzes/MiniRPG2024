@@ -1,39 +1,30 @@
 #include "Engine.h"
 #include "RenderUtils.h"
-
-
-void PrintDeviceError(WGPUErrorType errorType, const char* message, void*) {
-	const char* errorTypeName = "";
-	switch (errorType) {
-	case WGPUErrorType_Validation:
-		errorTypeName = "Validation";
-		break;
-	case WGPUErrorType_OutOfMemory:
-		errorTypeName = "Out of memory";
-		break;
-	case WGPUErrorType_Unknown:
-		errorTypeName = "Unknown";
-		break;
-	case WGPUErrorType_DeviceLost:
-		errorTypeName = "Device lost";
-		break;
-	default:
-		//DAWN_UNREACHABLE();
-		return;
+//-----------------------------------------------------------------------------
+void wgpuPrintDeviceError(WGPUErrorType errorType, const char* message, void*) noexcept
+{
+	std::string errorTypeName = "";
+	switch (errorType)
+	{
+	case WGPUErrorType_Validation:  errorTypeName = "Validation"; break;
+	case WGPUErrorType_OutOfMemory: errorTypeName = "Out of memory"; break;
+	case WGPUErrorType_Internal:    errorTypeName = "Internal"; break;
+	case WGPUErrorType_Unknown:     errorTypeName = "Unknown"; break;
+	case WGPUErrorType_DeviceLost:  errorTypeName = "Device lost"; break;
 	}
-	//dawn::ErrorLog() << errorTypeName << " error: " << message;
+	Fatal(errorTypeName + " - " + std::string(message));
 }
-
-void DeviceLostCallback(WGPUDeviceLostReason reason, const char* message, void*)
+//-----------------------------------------------------------------------------
+void wgpuDeviceLostCallback(WGPUDeviceLostReason reason, const char* message, void*) noexcept
 {
-	//dawn::ErrorLog() << "Device lost: " << message;
+	Fatal("Device lost: " + std::string(message));
 }
-
-void DeviceLogCallback(WGPULoggingType type, const char* message, void*)
+//-----------------------------------------------------------------------------
+void wgpuDeviceLogCallback(WGPULoggingType type, const char* message, void*) noexcept
 {
-	//dawn::ErrorLog() << "Device log: " << message;
+	Error("Device log: " + std::string(message));
 }
-
+//-----------------------------------------------------------------------------
 wgpu::AdapterType adapterType = wgpu::AdapterType::Unknown;
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
@@ -62,9 +53,8 @@ void initTextures(wgpu::Device device, wgpu::Queue queue)
 
 	// Initialize the texture with arbitrary data until we can load images
 	std::vector<uint8_t> data(4 * 1024 * 1024, 0);
-	for (size_t i = 0; i < data.size(); ++i) {
+	for (size_t i = 0; i < data.size(); ++i) 
 		data[i] = static_cast<uint8_t>(i % 253);
-	}
 
 	wgpu::Buffer stagingBuffer = CreateBuffer(device, data.data(), static_cast<uint32_t>(data.size()), wgpu::BufferUsage::CopySrc);
 	wgpu::ImageCopyBuffer imageCopyBuffer = CreateImageCopyBuffer(stagingBuffer, 0, 4 * 1024);
@@ -149,13 +139,10 @@ void Render::Destroy()
 	delete m_data;
 }
 
-void Render::Update()
-{
-	dawn::native::InstanceProcessEvents(m_data->instance->Get());
-}
-
 void Render::Frame()
 {
+	dawn::native::InstanceProcessEvents(m_data->instance->Get());
+
 	wgpu::TextureView backbufferView = m_data->swapChain.GetCurrentTextureView();
 	if (!backbufferView)
 	{
@@ -257,9 +244,9 @@ bool Render::createDevice(void* glfwWindow)
 	m_data->swapChain = wgpu::SwapChain::Acquire(backendSwapChain);
 
 	dawnProcSetProcs(&procs);
-	procs.deviceSetUncapturedErrorCallback(cDevice, PrintDeviceError, nullptr);
-	procs.deviceSetDeviceLostCallback(cDevice, DeviceLostCallback, nullptr);
-	procs.deviceSetLoggingCallback(cDevice, DeviceLogCallback, nullptr);
+	procs.deviceSetUncapturedErrorCallback(cDevice, wgpuPrintDeviceError, nullptr);
+	procs.deviceSetDeviceLostCallback(cDevice, wgpuDeviceLostCallback, nullptr);
+	procs.deviceSetLoggingCallback(cDevice, wgpuDeviceLogCallback, nullptr);
 
 	m_data->device = wgpu::Device::Acquire(cDevice);
 
