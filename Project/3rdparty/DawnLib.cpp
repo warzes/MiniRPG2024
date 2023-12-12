@@ -1,6 +1,5 @@
 #if defined(_MSC_VER)
 #	pragma comment( lib, "dawn/dawn_native.lib" )
-#	pragma comment( lib, "dawn/dawn_wire.lib" )
 #	pragma comment( lib, "dawn/dawn_proc.lib" )
 #	pragma comment( lib, "dawn/dawn_common.lib" )
 #	pragma comment( lib, "dawn/dawncpp.lib" )

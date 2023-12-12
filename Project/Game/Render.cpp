@@ -32,38 +32,14 @@ void DeviceLogCallback(WGPULoggingType type, const char* message, void*)
 	//dawn::ErrorLog() << "Device log: " << message;
 }
 
-std::unique_ptr<dawn::native::Instance> instance;
-wgpu::SwapChain swapChain;
 wgpu::AdapterType adapterType = wgpu::AdapterType::Unknown;
-static dawn::wire::WireServer* wireServer = nullptr;
-static dawn::wire::WireClient* wireClient = nullptr;
-static dawn::utils::TerribleCommandBuffer* c2sBuf = nullptr;
-static dawn::utils::TerribleCommandBuffer* s2cBuf = nullptr;
-
-enum class CmdBufType {
-	None,
-	Terrible,
-};
-static CmdBufType cmdBufType = CmdBufType::Terrible;
-
-wgpu::TextureFormat GetPreferredSwapChainTextureFormat() {
-	return wgpu::TextureFormat::BGRA8Unorm;
-}
-
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
 
-
-//wgpu::Device device;
-
 wgpu::Buffer indexBuffer;
 wgpu::Buffer vertexBuffer;
-
 wgpu::Texture texture;
 wgpu::Sampler sampler;
-
-//wgpu::Queue queue;
-wgpu::TextureView depthStencilView;
 wgpu::RenderPipeline pipeline;
 wgpu::BindGroup bindGroup;
 
@@ -75,14 +51,12 @@ void initBuffers(wgpu::Device device)
 		1,
 		2,
 	};
-	indexBuffer = dawn::utils::CreateBufferFromData(device, indexData, sizeof(indexData),
-		wgpu::BufferUsage::Index);
+	indexBuffer = dawn::utils::CreateBufferFromData(device, indexData, sizeof(indexData), wgpu::BufferUsage::Index);
 
 	static const float vertexData[12] = {
 		0.0f, 0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, 0.0f, 1.0f,
 	};
-	vertexBuffer = dawn::utils::CreateBufferFromData(device, vertexData, sizeof(vertexData),
-		wgpu::BufferUsage::Vertex);
+	vertexBuffer = dawn::utils::CreateBufferFromData(device, vertexData, sizeof(vertexData), wgpu::BufferUsage::Vertex);
 }
 
 void initTextures(wgpu::Device device, wgpu::Queue queue)
@@ -121,26 +95,13 @@ void initTextures(wgpu::Device device, wgpu::Queue queue)
 	queue.Submit(1, &copy);
 }
 
-wgpu::TextureView CreateDefaultDepthStencilView(const wgpu::Device& device) {
-	wgpu::TextureDescriptor descriptor;
-	descriptor.dimension = wgpu::TextureDimension::e2D;
-	descriptor.size.width = kWidth;
-	descriptor.size.height = kHeight;
-	descriptor.size.depthOrArrayLayers = 1;
-	descriptor.sampleCount = 1;
-	descriptor.format = wgpu::TextureFormat::Depth24PlusStencil8;
-	descriptor.mipLevelCount = 1;
-	descriptor.usage = wgpu::TextureUsage::RenderAttachment;
-	auto depthStencilTexture = device.CreateTexture(&descriptor);
-	return depthStencilTexture.CreateView();
-}
-
 struct RenderData
 {
 	std::unique_ptr<dawn::native::Instance> instance;
 	wgpu::Device device;
 	wgpu::Queue queue;
 	wgpu::SwapChain swapChain;
+	wgpu::TextureView depthStencilView;
 };
 
 bool Render::Create(void* glfwWindow)
@@ -174,22 +135,18 @@ bool Render::Create(void* glfwWindow)
 					{1, wgpu::ShaderStage::Fragment, wgpu::TextureSampleType::Float},
 		});
 
-	wgpu::PipelineLayout pl = dawn::utils::MakeBasicPipelineLayout(m_data->device, &bgl);
+	dawn::utils::ComboRenderPipelineDescriptor pipelineDescriptor{};
+	pipelineDescriptor.layout = dawn::utils::MakeBasicPipelineLayout(m_data->device, &bgl);
+	pipelineDescriptor.vertex.module = vsModule;
+	pipelineDescriptor.vertex.bufferCount = 1;
+	pipelineDescriptor.cBuffers[0].arrayStride = 4 * sizeof(float);
+	pipelineDescriptor.cBuffers[0].attributeCount = 1;
+	pipelineDescriptor.cAttributes[0].format = wgpu::VertexFormat::Float32x4;
+	pipelineDescriptor.cFragment.module = fsModule;
+	pipelineDescriptor.cTargets[0].format = wgpu::TextureFormat::BGRA8Unorm;
+	pipelineDescriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
 
-	depthStencilView = CreateDefaultDepthStencilView(m_data->device);
-
-	dawn::utils::ComboRenderPipelineDescriptor descriptor;
-	descriptor.layout = dawn::utils::MakeBasicPipelineLayout(m_data->device, &bgl);
-	descriptor.vertex.module = vsModule;
-	descriptor.vertex.bufferCount = 1;
-	descriptor.cBuffers[0].arrayStride = 4 * sizeof(float);
-	descriptor.cBuffers[0].attributeCount = 1;
-	descriptor.cAttributes[0].format = wgpu::VertexFormat::Float32x4;
-	descriptor.cFragment.module = fsModule;
-	descriptor.cTargets[0].format = GetPreferredSwapChainTextureFormat();
-	descriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
-
-	pipeline = m_data->device.CreateRenderPipeline(&descriptor);
+	pipeline = m_data->device.CreateRenderPipeline(&pipelineDescriptor);
 
 	wgpu::TextureView view = texture.CreateView();
 
@@ -224,11 +181,24 @@ void Render::Frame()
 	renderPassColorAttachment.storeOp = wgpu::StoreOp::Store;
 	renderPassColorAttachment.clearValue = wgpu::Color{ 0.95f, 0.35f, 0.49f, 1.0f };
 
-	dawn::utils::ComboRenderPassDescriptor renderPassDesc({ backbufferView }, depthStencilView);
+	//dawn::utils::ComboRenderPassDescriptor renderPassDesc({ backbufferView }, depthStencilView);
 	dawn::utils::ComboRenderPassDescriptor renderPassDesc{};
 	renderPassDesc.colorAttachmentCount = 1;
 	renderPassDesc.colorAttachments = &renderPassColorAttachment;
 	renderPassDesc.depthStencilAttachment = nullptr;
+
+	wgpu::RenderPassDepthStencilAttachment cDepthStencilAttachmentInfo = {};
+	cDepthStencilAttachmentInfo.depthClearValue = 1.0f;
+	cDepthStencilAttachmentInfo.stencilClearValue = 0;
+	cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Clear;
+	cDepthStencilAttachmentInfo.depthStoreOp = wgpu::StoreOp::Store;
+	cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Clear;
+	cDepthStencilAttachmentInfo.stencilStoreOp = wgpu::StoreOp::Store;
+	if (m_data->depthStencilView.Get() != nullptr) 
+	{
+		cDepthStencilAttachmentInfo.view = m_data->depthStencilView;
+		renderPassDesc.depthStencilAttachment = &cDepthStencilAttachmentInfo;
+	}
 
 	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
@@ -245,17 +215,10 @@ void Render::Frame()
 	m_data->queue.Submit(1, &commands);
 
 	m_data->swapChain.Present();
-	
-	if (cmdBufType == CmdBufType::Terrible) 
-	{
-		bool c2sSuccess = c2sBuf->Flush();
-		bool s2cSuccess = s2cBuf->Flush();
-
-		DAWN_ASSERT(c2sSuccess && s2cSuccess);
-	}
 }
 
 std::optional<dawn::native::Adapter> requestAdapter(dawn::native::Instance* instance);
+wgpu::TextureView createDefaultDepthStencilView(const wgpu::Device& device);
 
 bool Render::createDevice(void* glfwWindow)
 {
@@ -301,45 +264,9 @@ bool Render::createDevice(void* glfwWindow)
 	WGPUDevice cDevice = nullptr;
 	DawnProcTable procs;
 
-	switch (cmdBufType) 
-	{
-	case CmdBufType::None:
-		procs = backendProcs;
-		cDevice = backendDevice;
-		m_data->swapChain = wgpu::SwapChain::Acquire(backendSwapChain);
-		break;
-
-	case CmdBufType::Terrible: 
-	{
-		c2sBuf = new dawn::utils::TerribleCommandBuffer();
-		s2cBuf = new dawn::utils::TerribleCommandBuffer();
-
-		dawn::wire::WireServerDescriptor serverDesc = {};
-		serverDesc.procs = &backendProcs;
-		serverDesc.serializer = s2cBuf;
-
-		wireServer = new dawn::wire::WireServer(serverDesc);
-		c2sBuf->SetHandler(wireServer);
-
-		dawn::wire::WireClientDescriptor clientDesc = {};
-		clientDesc.serializer = c2sBuf;
-
-		wireClient = new dawn::wire::WireClient(clientDesc);
-		procs = dawn::wire::client::GetProcs();
-		s2cBuf->SetHandler(wireClient);
-
-		auto deviceReservation = wireClient->ReserveDevice();
-		wireServer->InjectDevice(backendDevice, deviceReservation.id,
-			deviceReservation.generation);
-		cDevice = deviceReservation.device;
-
-		auto swapChainReservation = wireClient->ReserveSwapChain(cDevice, &swapChainDesc);
-		wireServer->InjectSwapChain(backendSwapChain, swapChainReservation.id,
-			swapChainReservation.generation, deviceReservation.id,
-			deviceReservation.generation);
-		m_data->swapChain = wgpu::SwapChain::Acquire(swapChainReservation.swapchain);
-	} break;
-	}
+	procs = backendProcs;
+	cDevice = backendDevice;
+	m_data->swapChain = wgpu::SwapChain::Acquire(backendSwapChain);
 
 	dawnProcSetProcs(&procs);
 	procs.deviceSetUncapturedErrorCallback(cDevice, PrintDeviceError, nullptr);
@@ -349,6 +276,8 @@ bool Render::createDevice(void* glfwWindow)
 	m_data->device = wgpu::Device::Acquire(cDevice);
 
 	m_data->queue = m_data->device.GetQueue();
+
+	m_data->depthStencilView = createDefaultDepthStencilView(m_data->device);
 
 	return true;
 }
@@ -380,4 +309,19 @@ std::optional<dawn::native::Adapter> requestAdapter(dawn::native::Instance* inst
 	}
 
 	return *preferredAdapter;
+}
+
+wgpu::TextureView createDefaultDepthStencilView(const wgpu::Device& device)
+{
+	wgpu::TextureDescriptor descriptor{};
+	descriptor.dimension = wgpu::TextureDimension::e2D;
+	descriptor.size.width = kWidth;
+	descriptor.size.height = kHeight;
+	descriptor.size.depthOrArrayLayers = 1;
+	descriptor.sampleCount = 1;
+	descriptor.format = wgpu::TextureFormat::Depth24PlusStencil8;
+	descriptor.mipLevelCount = 1;
+	descriptor.usage = wgpu::TextureUsage::RenderAttachment;
+	auto depthStencilTexture = device.CreateTexture(&descriptor);
+	return depthStencilTexture.CreateView();
 }

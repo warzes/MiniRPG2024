@@ -26,9 +26,6 @@
 #include <Dawn/webgpu.h>
 #include <Dawn/native/DawnNative.h>
 #include <webgpu/webgpu_glfw.h>
-#include <Dawn/wire/WireServer.h>
-#include <Dawn/wire/WireClient.h>
-#include <Dawn/utils/TerribleCommandBuffer.h>
 #include <Dawn/utils/WGPUHelpers.h>
 #include <Dawn/utils/ComboRenderPipelineDescriptor.h>
 #include <Dawn/dawn_proc.h>
