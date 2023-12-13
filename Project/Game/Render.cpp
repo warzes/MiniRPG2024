@@ -7,6 +7,7 @@
 #include <Dawn/utils/WGPUHelpers.h>
 #include <Dawn/utils/ComboRenderPipelineDescriptor.h>
 #include <Dawn/dawn_proc.h>
+#include <glfw.h>
 
 #include "RenderUtils.h"
 #include "RenderCore.h"
@@ -25,6 +26,14 @@ wgpu::BindGroup bindGroup;
 wgpu::RenderPipeline pipeline2;
 wgpu::Buffer vertexBuffer2;
 wgpu::Buffer indexBuffer2;
+wgpu::Buffer uniformBuffer;
+wgpu::BindGroup bindGroup2;
+
+struct MyUniforms {
+	float time;
+	std::array<float, 4> color;  // or float color[4]
+};
+MyUniforms uniforms;
 
 void initTextures(wgpu::Device device, wgpu::Queue queue)
 {
@@ -124,6 +133,13 @@ bool Render::Create(void* glfwWindow)
 
 
 	const char* shaderText = R"(
+struct MyUniforms {
+    time: f32,
+    color: vec4f,
+};
+
+@group(0) @binding(0) var<uniform> uMyUniforms: MyUniforms;
+
 struct VertexInput {
 	@location(0) position: vec2f,
 	@location(1) color: vec3f,
@@ -138,7 +154,12 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput
 {
 	var out: VertexOutput;
-	out.position = vec4f(in.position, 0.0, 1.0);
+	let ratio = 640.0 / 480.0;
+	// We move the scene depending on the time
+	var offset = vec2f(-0.6875, -0.463);
+	offset += 0.3 * vec2f(cos(uMyUniforms.time), sin(uMyUniforms.time));
+
+	out.position = vec4f(in.position.x + offset.x, (in.position.y + offset.y) * ratio, 0.0, 1.0);
 	out.color = in.color;
 	return out;
 }
@@ -146,34 +167,103 @@ fn vs_main(in: VertexInput) -> VertexOutput
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
-	return vec4f(in.color, 1.0);
+	let color = in.color * uMyUniforms.color.rgb;
+	// Gamma-correction
+	let corrected_color = pow(color, vec3f(2.2));
+	return vec4f(corrected_color, uMyUniforms.color.a);	
+//return vec4f(in.color, 1.0);
 }
 )";
 	wgpu::ShaderModule vsModule2 = CreateShaderModule(m_data->device, shaderText);
 	wgpu::ShaderModule fsModule2 = CreateShaderModule(m_data->device, shaderText);
 
 	constexpr float vertexData2[] = {
-		// x,   y,     r,   g,   b
-		-0.5, -0.5,   1.0, 0.0, 0.0,
-		+0.5, -0.5,   0.0, 1.0, 0.0,
-		+0.5, +0.5,   0.0, 0.0, 1.0,
-		-0.5, +0.5,   1.0, 1.0, 0.0
+		// x,     y,      r,     g,     b
+		0.5f,   0.0f,    0.0f, 0.353f, 0.612f,
+		1.0f,   0.866f,  0.0f, 0.353f, 0.612f,
+		0.0f,   0.866f,  0.0f, 0.353f, 0.612f,
+
+		0.75f,  0.433f,  0.0f, 0.4f,   0.7f,
+		1.25f,  0.433f,  0.0f, 0.4f,   0.7f,
+		1.0f,   0.866f,  0.0f, 0.4f,   0.7f,
+
+		1.0f,   0.0f,    0.0f, 0.463f, 0.8f,
+		1.25f,  0.433f,  0.0f, 0.463f, 0.8f,
+		0.75f,  0.433f,  0.0f, 0.463f, 0.8f,
+
+		1.25f,  0.433f,  0.0f, 0.525f, 0.91f,
+		1.375f, 0.65f,   0.0f, 0.525f, 0.91f,
+		1.125f, 0.65f,   0.0f, 0.525f, 0.91f,
+
+		1.125f, 0.65f,   0.0f, 0.576f, 1.0f,
+		1.375f, 0.65f,   0.0f, 0.576f, 1.0f,
+		1.25f,  0.866f,  0.0f, 0.576f, 1.0f,
+
 	};
 	vertexBuffer2 = CreateBuffer(m_data->device, vertexData2, sizeof(vertexData2), wgpu::BufferUsage::Vertex);
 
 	std::vector<uint16_t> indexData2 = {
-		0, 1, 2, // Triangle #0
-		0, 2, 3  // Triangle #1
+		 0,  1,  2,
+		 3,  4,  5,
+		 6,  7,  8,
+		 9, 10, 11,
+		12, 13, 14,
 	};
 	indexBuffer2 = CreateBuffer(m_data->device, indexData2.data(), sizeof(indexData2), wgpu::BufferUsage::Index);
 
-	std::vector<wgpu::VertexAttribute> vertexAttribs(2);
+	uniforms.time = 1.0f;
+	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
 
+	uniformBuffer = CreateBuffer(m_data->device, &currentTime, sizeof(float), wgpu::BufferUsage::Uniform);
+
+
+	// Create binding layout
+	wgpu::BindGroupLayoutEntry bindingLayout{};
+	// The binding index as used in the @binding attribute in the shader
+	bindingLayout.binding = 0;
+	// The stage that needs to access this resource
+	bindingLayout.visibility = wgpu::ShaderStage::Vertex;
+	bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
+	bindingLayout.buffer.minBindingSize = sizeof(float);
+
+	// Create a bind group layout
+	wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
+	bindGroupLayoutDesc.entryCount = 1;
+	bindGroupLayoutDesc.entries = &bindingLayout;
+	wgpu::BindGroupLayout bindGroupLayout = m_data->device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+
+	// Create a binding
+	wgpu::BindGroupEntry binding{};
+	// The index of the binding (the entries in bindGroupDesc can be in any order)
+	binding.binding = 0;
+	// The buffer it is actually bound to
+	binding.buffer = uniformBuffer;
+	// We can specify an offset within the buffer, so that a single buffer can hold multiple uniform blocks.
+	binding.offset = 0;
+	// And we specify again the size of the buffer.
+	binding.size = sizeof(float);
+	// A bind group contains one or multiple bindings
+	wgpu::BindGroupDescriptor bindGroupDesc{};
+	bindGroupDesc.layout = bindGroupLayout;
+	// There must be as many bindings as declared in the layout!
+	bindGroupDesc.entryCount = bindGroupLayoutDesc.entryCount;
+	bindGroupDesc.entries = &binding;
+	bindGroup2 = m_data->device.CreateBindGroup(&bindGroupDesc);
+
+
+
+
+	// Create the pipeline layout
+	wgpu::PipelineLayoutDescriptor layoutDesc{};
+	layoutDesc.bindGroupLayoutCount = 1;
+	layoutDesc.bindGroupLayouts = (wgpu::BindGroupLayout*)&bindGroupLayout;
+	wgpu::PipelineLayout layout = m_data->device.CreatePipelineLayout(&layoutDesc);
+
+	std::vector<wgpu::VertexAttribute> vertexAttribs(2);
 	// Position attribute
 	vertexAttribs[0].shaderLocation = 0;
 	vertexAttribs[0].format = wgpu::VertexFormat::Float32x2;
 	vertexAttribs[0].offset = 0;
-
 	// Color attribute
 	vertexAttribs[1].shaderLocation = 1;
 	vertexAttribs[1].format = wgpu::VertexFormat::Float32x3;
@@ -221,7 +311,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	pipelineDesc.multisample.count = 1;
 	pipelineDesc.multisample.mask = ~0u;
 	pipelineDesc.multisample.alphaToCoverageEnabled = false;
-	pipelineDesc.layout = nullptr;
+	pipelineDesc.layout = layout;
 
 	pipeline2 = m_data->device.CreateRenderPipeline(&pipelineDesc);
 
@@ -237,7 +327,11 @@ void Render::Destroy()
 //-----------------------------------------------------------------------------
 void Render::Frame()
 {
-	dawn::native::InstanceProcessEvents(m_data->dawnInstance->Get());
+	// Update uniform buffer
+	uniforms.time = static_cast<float>(glfwGetTime());
+	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
+	m_data->queue.WriteBuffer(uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
+
 
 	wgpu::TextureView backbufferView = m_data->swapChain.GetCurrentTextureView();
 	if (!backbufferView)
@@ -279,9 +373,10 @@ void Render::Frame()
 		//renderPass.DrawIndexed(3);
 
 		renderPass.SetPipeline(pipeline2);
+		renderPass.SetBindGroup(0, bindGroup2, 0, nullptr);
 		renderPass.SetVertexBuffer(0, vertexBuffer2, 0/*, vertexData.size() * sizeof(float)*/);
 		renderPass.SetIndexBuffer(indexBuffer2, wgpu::IndexFormat::Uint16, 0/*, indexData.size() * sizeof(uint16_t)*/);
-		renderPass.DrawIndexed(6, 1, 0, 0);
+		renderPass.DrawIndexed(15, 1, 0, 0);
 		renderPass.End();
 	}
 
