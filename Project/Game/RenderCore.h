@@ -1,5 +1,4 @@
 #pragma once
-
 //-----------------------------------------------------------------------------
 void wgpuPrintDeviceError(WGPUErrorType errorType, const char* message, void*) noexcept
 {
@@ -25,41 +24,12 @@ void wgpuDeviceLogCallback(WGPULoggingType type, const char* message, void*) noe
 	Error("Device log: " + std::string(message));
 }
 //-----------------------------------------------------------------------------
-std::optional<dawn::native::Adapter> requestAdapter(dawn::native::Instance* instance)
-{
-	wgpu::RequestAdapterOptions options{};
-	options.backendType = wgpu::BackendType::D3D12;
-
-	// Get an adapter for the backend to use, and create the device.
-	auto adapters = instance->EnumerateAdapters(&options);
-
-	wgpu::DawnAdapterPropertiesPowerPreference powerProps{};
-	wgpu::AdapterProperties adapterProperties{};
-	adapterProperties.nextInChain = &powerProps;
-	// Find the first adapter which satisfies the adapterType requirement.
-	auto isAdapterType = [&adapterProperties](const auto& adapter) -> bool {
-		// picks the first adapter when adapterType is unknown.
-		if (adapterType == wgpu::AdapterType::Unknown)
-			return true;
-		adapter.GetProperties(&adapterProperties);
-		return adapterProperties.adapterType == adapterType;
-		};
-	auto preferredAdapter = std::find_if(adapters.begin(), adapters.end(), isAdapterType);
-	if (preferredAdapter == adapters.end())
-	{
-		puts("Failed to find an adapter! Please try another adapter type.");
-		return std::nullopt;
-	}
-
-	return *preferredAdapter;
-}
-//-----------------------------------------------------------------------------
-wgpu::TextureView createDefaultDepthStencilView(const wgpu::Device& device)
+wgpu::TextureView createDefaultDepthStencilView(const wgpu::Device& device, uint32_t width, uint32_t height)
 {
 	wgpu::TextureDescriptor descriptor{};
 	descriptor.dimension = wgpu::TextureDimension::e2D;
-	descriptor.size.width = kWidth;
-	descriptor.size.height = kHeight;
+	descriptor.size.width = width;
+	descriptor.size.height = height;
 	descriptor.size.depthOrArrayLayers = 1;
 	descriptor.sampleCount = 1;
 	descriptor.format = wgpu::TextureFormat::Depth24PlusStencil8;

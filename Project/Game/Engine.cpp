@@ -30,6 +30,11 @@ int WindowHeight = 0;
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
 //-----------------------------------------------------------------------------
+struct EngineData
+{
+	GLFWwindow* window = nullptr;
+};
+//-----------------------------------------------------------------------------
 int IApp::GetWindowWidth() const
 {
 	return WindowWidth;
@@ -44,11 +49,6 @@ void IApp::Exit()
 {
 	m_engine.exit();
 }
-//-----------------------------------------------------------------------------
-struct EngineData
-{
-	GLFWwindow* window = nullptr;
-};
 //-----------------------------------------------------------------------------
 void glfwErrorCallback(int, const char* message) noexcept
 {
@@ -89,7 +89,7 @@ bool Engine::init()
 		return false;
 	}
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE);
+	//glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GLFW_FALSE); // disable high-dpi for macOS
 	m_data->window = glfwCreateWindow(kWidth, kHeight, "Game", nullptr, nullptr);
 	if (!m_data->window)
 	{
