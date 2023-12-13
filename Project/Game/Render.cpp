@@ -23,6 +23,8 @@ wgpu::RenderPipeline pipeline;
 wgpu::BindGroup bindGroup;
 
 wgpu::RenderPipeline pipeline2;
+wgpu::Buffer vertexBuffer2;
+wgpu::Buffer indexBuffer2;
 
 void initTextures(wgpu::Device device, wgpu::Queue queue)
 {
@@ -121,40 +123,67 @@ bool Render::Create(void* glfwWindow)
 	bindGroup = dawn::utils::MakeBindGroup(m_data->device, bgl, { {0, sampler}, {1, view} });
 
 
+	const char* shaderText = R"(
+struct VertexInput {
+	@location(0) position: vec2f,
+	@location(1) color: vec3f,
+};
 
+struct VertexOutput {
+	@builtin(position) position: vec4f,
+	@location(0) color: vec3f,
+};
 
-
-
-
-
-
-
-
-
-	wgpu::ShaderModule vsModule2 = CreateShaderModule(m_data->device, 
-R"(
 @vertex
-fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4f
+fn vs_main(in: VertexInput) -> VertexOutput
 {
-	var p = vec2f(0.0, 0.0);
-	if (in_vertex_index == 0u) {
-		p = vec2f(-0.5, -0.5);
-	} else if (in_vertex_index == 1u) {
-		p = vec2f(0.5, -0.5);
-	} else {
-		p = vec2f(0.0, 0.5);
-	}
-	return vec4f(p, 0.0, 1.0);
-})");
+	var out: VertexOutput;
+	out.position = vec4f(in.position, 0.0, 1.0);
+	out.color = in.color;
+	return out;
+}
 
-	wgpu::ShaderModule fsModule2 = CreateShaderModule(m_data->device, 
-R"(
 @fragment
-fn fs_main() -> @location(0) vec4f
+fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
-	return vec4f(0.0, 0.4, 1.0, 1.0);
-})");
+	return vec4f(in.color, 1.0);
+}
+)";
+	wgpu::ShaderModule vsModule2 = CreateShaderModule(m_data->device, shaderText);
+	wgpu::ShaderModule fsModule2 = CreateShaderModule(m_data->device, shaderText);
 
+	constexpr float vertexData2[] = {
+		// x,   y,     r,   g,   b
+		-0.5, -0.5,   1.0, 0.0, 0.0,
+		+0.5, -0.5,   0.0, 1.0, 0.0,
+		+0.5, +0.5,   0.0, 0.0, 1.0,
+		-0.5, +0.5,   1.0, 1.0, 0.0
+	};
+	vertexBuffer2 = CreateBuffer(m_data->device, vertexData2, sizeof(vertexData2), wgpu::BufferUsage::Vertex);
+
+	std::vector<uint16_t> indexData2 = {
+		0, 1, 2, // Triangle #0
+		0, 2, 3  // Triangle #1
+	};
+	indexBuffer2 = CreateBuffer(m_data->device, indexData2.data(), sizeof(indexData2), wgpu::BufferUsage::Index);
+
+	std::vector<wgpu::VertexAttribute> vertexAttribs(2);
+
+	// Position attribute
+	vertexAttribs[0].shaderLocation = 0;
+	vertexAttribs[0].format = wgpu::VertexFormat::Float32x2;
+	vertexAttribs[0].offset = 0;
+
+	// Color attribute
+	vertexAttribs[1].shaderLocation = 1;
+	vertexAttribs[1].format = wgpu::VertexFormat::Float32x3;
+	vertexAttribs[1].offset = 2 * sizeof(float);
+
+	wgpu::VertexBufferLayout vertexBufferLayout{};
+	vertexBufferLayout.attributeCount = static_cast<uint32_t>(vertexAttribs.size());
+	vertexBufferLayout.attributes = vertexAttribs.data();
+	vertexBufferLayout.arrayStride = 5 * sizeof(float);
+	vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
 
 	wgpu::BlendState blendState{};
 	blendState.color.srcFactor = wgpu::BlendFactor::SrcAlpha;
@@ -177,8 +206,8 @@ fn fs_main() -> @location(0) vec4f
 	fragmentState.targets = &colorTarget;
 
 	wgpu::RenderPipelineDescriptor pipelineDesc{};
-	pipelineDesc.vertex.bufferCount = 0;
-	pipelineDesc.vertex.buffers = nullptr;
+	pipelineDesc.vertex.bufferCount = 1;
+	pipelineDesc.vertex.buffers = &vertexBufferLayout;
 	pipelineDesc.vertex.module = vsModule2;
 	pipelineDesc.vertex.entryPoint = "vs_main";
 	pipelineDesc.vertex.constantCount = 0;
@@ -242,12 +271,17 @@ void Render::Frame()
 	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
 		wgpu::RenderPassEncoder renderPass = encoder.BeginRenderPass(&renderPassDesc);
-		renderPass.SetPipeline(pipeline2);
+
+		//renderPass.SetPipeline(pipeline);
 		//renderPass.SetBindGroup(0, bindGroup);
 		//renderPass.SetVertexBuffer(0, vertexBuffer);
 		//renderPass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32);
 		//renderPass.DrawIndexed(3);
-		renderPass.Draw(3, 1, 0, 0);
+
+		renderPass.SetPipeline(pipeline2);
+		renderPass.SetVertexBuffer(0, vertexBuffer2, 0/*, vertexData.size() * sizeof(float)*/);
+		renderPass.SetIndexBuffer(indexBuffer2, wgpu::IndexFormat::Uint16, 0/*, indexData.size() * sizeof(uint16_t)*/);
+		renderPass.DrawIndexed(6, 1, 0, 0);
 		renderPass.End();
 	}
 
