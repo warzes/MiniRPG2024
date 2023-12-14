@@ -45,6 +45,10 @@ glm::mat4x4 R1;
 glm::mat4x4 T1;
 glm::mat4x4 S;
 
+wgpu::Texture texture2;
+wgpu::TextureView textureView;
+wgpu::Sampler sampler2;
+
 void initTextures(wgpu::Device device, wgpu::Queue queue)
 {
 	wgpu::TextureDescriptor descriptor;
@@ -109,15 +113,19 @@ struct VertexInput {
 	@location(0) position: vec3f,
 	@location(1) normal: vec3f,
 	@location(2) color: vec3f,
+	@location(3) uv: vec2f,
 };
 
 struct VertexOutput {
 	@builtin(position) position: vec4f,
 	@location(0) color: vec3f,
 	@location(1) normal: vec3f,
+	@location(2) uv: vec2f,
 };
 
 @group(0) @binding(0) var<uniform> uMyUniforms: MyUniforms;
+@group(0) @binding(1) var gradientTexture: texture_2d<f32>;
+@group(0) @binding(2) var textureSampler: sampler;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput
@@ -126,22 +134,27 @@ fn vs_main(in: VertexInput) -> VertexOutput
 	out.position = uMyUniforms.projectionMatrix * uMyUniforms.viewMatrix * uMyUniforms.modelMatrix * vec4f(in.position, 1.0);
 	out.color = in.color;
 	out.normal = (uMyUniforms.modelMatrix * vec4f(in.normal, 0.0)).xyz;
+	out.uv = in.uv;
 	return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
-	let normal = normalize(in.normal);
+	//let normal = normalize(in.normal);
 
-	let lightColor1 = vec3f(1.0, 0.9, 0.6);
-	let lightColor2 = vec3f(0.6, 0.9, 1.0);
-	let lightDirection1 = vec3f(0.5, -0.9, 0.1);
-	let lightDirection2 = vec3f(0.2, 0.4, 0.3);
-	let shading1 = max(0.0, dot(lightDirection1, normal));
-	let shading2 = max(0.0, dot(lightDirection2, normal));
-	let shading = shading1 * lightColor1 + shading2 * lightColor2;
-	let color = in.color * shading;
+	//let lightColor1 = vec3f(1.0, 0.9, 0.6);
+	//let lightColor2 = vec3f(0.6, 0.9, 1.0);
+	//let lightDirection1 = vec3f(0.5, -0.9, 0.1);
+	//let lightDirection2 = vec3f(0.2, 0.4, 0.3);
+	//let shading1 = max(0.0, dot(lightDirection1, normal));
+	//let shading2 = max(0.0, dot(lightDirection2, normal));
+	//let shading = shading1 * lightColor1 + shading2 * lightColor2;
+	//let color = in.color * shading;
+
+	let texelCoords = vec2i(in.uv * vec2f(textureDimensions(gradientTexture))); // получение текстурных координат без семпла... дает олдскул пикселявочсть?
+	//let color = textureLoad(gradientTexture, texelCoords, 0).rgb;
+	let color = textureSample(gradientTexture, textureSampler, in.uv).rgb;
 
 	// Gamma-correction
 	let corrected_color = pow(color, vec3f(2.2));
@@ -189,7 +202,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	};
 	indexBuffer2 = CreateBuffer(m_data->device, indexData2.data(), indexData2.size() * sizeof(uint16_t), wgpu::BufferUsage::Index);
 
-	bool success = loadGeometryFromObj("../Data/models/mammoth.obj", vertexData);
+	bool success = loadGeometryFromObj("../Data/models/fourareen.obj", vertexData);
 	if (!success) 
 	{
 		Fatal("Could not load geometry!");
@@ -232,8 +245,88 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
 	uniformBuffer = CreateBuffer(m_data->device, &uniforms, sizeof(MyUniforms), wgpu::BufferUsage::Uniform);
 
-	// Create binding layout
-	wgpu::BindGroupLayoutEntry bindingLayout{};
+	wgpu::TextureDescriptor textureDesc;
+	textureDesc.dimension = wgpu::TextureDimension::e2D;
+	textureDesc.size = { 256, 256, 1 };
+	textureDesc.mipLevelCount = 1;
+	textureDesc.sampleCount = 1;
+	textureDesc.format = wgpu::TextureFormat::RGBA8Unorm;
+	textureDesc.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst;
+	textureDesc.viewFormatCount = 0;
+	textureDesc.viewFormats = nullptr;
+
+	// Create image data
+	//std::vector<uint8_t> pixels(4 * textureDesc.size.width * textureDesc.size.height);
+	//for (uint32_t i = 0; i < textureDesc.size.width; ++i) {
+	//	for (uint32_t j = 0; j < textureDesc.size.height; ++j) {
+	//		uint8_t* p = &pixels[4 * (j * textureDesc.size.width + i)];
+	//		p[0] = (uint8_t)i; // r
+	//		p[1] = (uint8_t)j; // g
+	//		p[2] = 128; // b
+	//		p[3] = 255; // a
+	//	}
+	//}
+
+	// Create image data
+	std::vector<uint8_t> pixels(4 * textureDesc.size.width * textureDesc.size.height);
+	for (uint32_t i = 0; i < textureDesc.size.width; ++i) {
+		for (uint32_t j = 0; j < textureDesc.size.height; ++j) {
+			uint8_t* p = &pixels[4 * (j * textureDesc.size.width + i)];
+			p[0] = (i / 16) % 2 == (j / 16) % 2 ? 255 : 0; // r
+			p[1] = ((i - j) / 16) % 2 == 0 ? 255 : 0; // g
+			p[2] = ((i + j) / 16) % 2 == 0 ? 255 : 0; // b
+			p[3] = 255; // a
+		}
+	}
+
+	//texture2 = m_data->device.CreateTexture(&textureDesc);
+	//wgpu::TextureViewDescriptor textureViewDesc;
+	//textureViewDesc.aspect = wgpu::TextureAspect::All;
+	//textureViewDesc.baseArrayLayer = 0;
+	//textureViewDesc.arrayLayerCount = 1;
+	//textureViewDesc.baseMipLevel = 0;
+	//textureViewDesc.mipLevelCount = 1;
+	//textureViewDesc.dimension = wgpu::TextureViewDimension::e2D;
+	//textureViewDesc.format = textureDesc.format;
+	//textureView = texture2.CreateView(&textureViewDesc);
+
+	texture2 = LoadTexture(m_data->device, "../Data/Models/fourareen2K_albedo.jpg", &textureView);
+
+
+	wgpu::SamplerDescriptor samplerDesc;
+	samplerDesc.addressModeU = wgpu::AddressMode::ClampToEdge;
+	samplerDesc.addressModeV = wgpu::AddressMode::ClampToEdge;
+	samplerDesc.addressModeW = wgpu::AddressMode::ClampToEdge;
+	samplerDesc.magFilter = wgpu::FilterMode::Nearest;
+	samplerDesc.minFilter = wgpu::FilterMode::Linear;
+	samplerDesc.mipmapFilter = wgpu::MipmapFilterMode::Linear;
+	samplerDesc.lodMinClamp = 0.0f;
+	samplerDesc.lodMaxClamp = 1.0f;
+	samplerDesc.compare = wgpu::CompareFunction::Undefined;
+	samplerDesc.maxAnisotropy = 1;
+	sampler2 = m_data->device.CreateSampler(&samplerDesc);
+
+
+	// Arguments telling which part of the texture we upload to
+	// (together with the last argument of writeTexture)
+	wgpu::ImageCopyTexture destination;
+	destination.texture = texture2;
+	destination.mipLevel = 0;
+	destination.origin = { 0, 0, 0 }; // equivalent of the offset argument of Queue::writeBuffer
+	destination.aspect = wgpu::TextureAspect::All; // only relevant for depth/Stencil textures
+
+	// Arguments telling how the C++ side pixel memory is laid out
+	wgpu::TextureDataLayout source;
+	source.offset = 0;
+	source.bytesPerRow = 4 * textureDesc.size.width;
+	source.rowsPerImage = textureDesc.size.height;
+
+	m_data->queue.WriteTexture(&destination, pixels.data(), pixels.size(), &source, &textureDesc.size);
+
+	// Since we now have 2 bindings, we use a vector to store them
+	std::vector<wgpu::BindGroupLayoutEntry> bindingLayoutEntries(3);
+
+	wgpu::BindGroupLayoutEntry& bindingLayout = bindingLayoutEntries[0];
 	// The binding index as used in the @binding attribute in the shader
 	bindingLayout.binding = 0;
 	// The stage that needs to access this resource
@@ -241,10 +334,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
 	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
 
+	wgpu::BindGroupLayoutEntry& textureBindingLayout = bindingLayoutEntries[1];
+	// Setup texture binding
+	textureBindingLayout.binding = 1;
+	textureBindingLayout.visibility = wgpu::ShaderStage::Fragment;
+	textureBindingLayout.texture.sampleType = wgpu::TextureSampleType::Float;
+	textureBindingLayout.texture.viewDimension = wgpu::TextureViewDimension::e2D;
+
+	// The texture sampler binding
+	wgpu::BindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
+	samplerBindingLayout.binding = 2;
+	samplerBindingLayout.visibility = wgpu::ShaderStage::Fragment;
+	samplerBindingLayout.sampler.type = wgpu::SamplerBindingType::Filtering;
+
 	// Create a bind group layout
 	wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
-	bindGroupLayoutDesc.entryCount = 1;
-	bindGroupLayoutDesc.entries = &bindingLayout;
+	bindGroupLayoutDesc.entryCount = (uint32_t)bindingLayoutEntries.size();
+	bindGroupLayoutDesc.entries = bindingLayoutEntries.data();
 	wgpu::BindGroupLayout bindGroupLayout = m_data->device.CreateBindGroupLayout(&bindGroupLayoutDesc);
 
 	// Create the pipeline layout
@@ -254,26 +360,33 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	wgpu::PipelineLayout layout = m_data->device.CreatePipelineLayout(&layoutDesc);
 
 	// Create a binding
-	wgpu::BindGroupEntry binding{};
+	std::vector<wgpu::BindGroupEntry> bindings(3);
+
 	// The index of the binding (the entries in bindGroupDesc can be in any order)
-	binding.binding = 0;
+	bindings[0].binding = 0;
 	// The buffer it is actually bound to
-	binding.buffer = uniformBuffer;
+	bindings[0].buffer = uniformBuffer;
 	// We can specify an offset within the buffer, so that a single buffer can hold multiple uniform blocks.
-	binding.offset = 0;
+	bindings[0].offset = 0;
 	// And we specify again the size of the buffer.
-	binding.size = sizeof(MyUniforms);
+	bindings[0].size = sizeof(MyUniforms);
+
+	bindings[1].binding = 1;
+	bindings[1].textureView = textureView;
+
+	bindings[2].binding = 2;
+	bindings[2].sampler = sampler2;
 	
 	// A bind group contains one or multiple bindings
 	wgpu::BindGroupDescriptor bindGroupDesc{};
 	bindGroupDesc.layout = bindGroupLayout;
 	// There must be as many bindings as declared in the layout!
-	bindGroupDesc.entryCount = bindGroupLayoutDesc.entryCount;
-	bindGroupDesc.entries = &binding;
+	bindGroupDesc.entryCount = (uint32_t)bindings.size();
+	bindGroupDesc.entries = bindings.data();
 	bindGroup2 = m_data->device.CreateBindGroup(&bindGroupDesc);
 
 	// Vertex fetch
-	std::vector<wgpu::VertexAttribute> vertexAttribs(3);
+	std::vector<wgpu::VertexAttribute> vertexAttribs(4);
 	// Position attribute
 	vertexAttribs[0].shaderLocation = 0;
 	vertexAttribs[0].format = wgpu::VertexFormat::Float32x3;
@@ -286,6 +399,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	vertexAttribs[2].shaderLocation = 2;
 	vertexAttribs[2].format = wgpu::VertexFormat::Float32x3;
 	vertexAttribs[2].offset = offsetof(VertexAttributes, color);
+	// UV attribute
+	vertexAttribs[3].shaderLocation = 3;
+	vertexAttribs[3].format = wgpu::VertexFormat::Float32x2;
+	vertexAttribs[3].offset = offsetof(VertexAttributes, uv);
 
 	wgpu::VertexBufferLayout vertexBufferLayout{};
 	vertexBufferLayout.attributeCount = static_cast<uint32_t>(vertexAttribs.size());
@@ -361,10 +478,21 @@ void Render::Frame()
 	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, time), &uniforms.time, sizeof(MyUniforms::time));
 
 	// Update view matrix
-	angle1 = uniforms.time;
-	R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
-	uniforms.modelMatrix = R1 * T1 * S;
+	uniforms.modelMatrix = glm::mat4x4(1.0);
+	uniforms.viewMatrix = glm::lookAt(glm::vec3(-2.0f, -3.0f, 2.0f), glm::vec3(0.0f), glm::vec3(0, 0, 1));
+	uniforms.projectionMatrix = glm::perspective(45 * 3.14f / 180, 640.0f / 480.0f, 0.01f, 100.0f);
+
 	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, modelMatrix), &uniforms.modelMatrix, sizeof(MyUniforms::modelMatrix));
+	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, viewMatrix), &uniforms.viewMatrix, sizeof(MyUniforms::viewMatrix));
+	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, projectionMatrix), &uniforms.projectionMatrix, sizeof(MyUniforms::projectionMatrix));
+
+
+
+
+	//angle1 = uniforms.time;
+	//R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
+	//uniforms.modelMatrix = R1 * T1 * S;
+	//m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, modelMatrix), &uniforms.modelMatrix, sizeof(MyUniforms::modelMatrix));
 
 	wgpu::TextureView backbufferView = m_data->swapChain.GetCurrentTextureView();
 	if (!backbufferView)

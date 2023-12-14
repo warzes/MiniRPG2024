@@ -7,6 +7,7 @@ struct VertexAttributes
 	glm::vec3 position;
 	glm::vec3 normal;
 	glm::vec3 color;
+	glm::vec2 uv;
 };
 
 bool loadGeometryFromObj(const std::filesystem::path& path,  std::vector<VertexAttributes>& vertexData) 
@@ -71,6 +72,12 @@ bool loadGeometryFromObj(const std::filesystem::path& path,  std::vector<VertexA
 				attrib.colors[3 * idx.vertex_index + 0],
 				attrib.colors[3 * idx.vertex_index + 1],
 				attrib.colors[3 * idx.vertex_index + 2]
+			};
+
+			vertexData[offset + i].uv = 
+			{
+				attrib.texcoords[2 * idx.texcoord_index + 0],
+				1 - attrib.texcoords[2 * idx.texcoord_index + 1]
 			};
 		}
 	}

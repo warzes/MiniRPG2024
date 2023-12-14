@@ -8,6 +8,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Элементы решения", "Элементы решения", "{584E0FC4-63FD-411A-BCD9-8FFC4BDEEE90}"
 	ProjectSection(SolutionItems) = preProject
 		EngineDoc.md = EngineDoc.md
+		idea.md = idea.md
 		ref.md = ref.md
 		todo.md = todo.md
 	EndProjectSection
