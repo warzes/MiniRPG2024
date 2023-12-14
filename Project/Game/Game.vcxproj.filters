@@ -23,6 +23,9 @@
     <ClCompile Include="TestApp.cpp">
       <Filter>Test</Filter>
     </ClCompile>
+    <ClCompile Include="..\3rdparty\tiny_obj_loader.cpp">
+      <Filter>Engine\3rdparty</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">
@@ -968,6 +971,9 @@
     </ClInclude>
     <ClInclude Include="RenderCore.h">
       <Filter>Engine\Private</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\tiny_obj_loader.h">
+      <Filter>Engine\3rdparty</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

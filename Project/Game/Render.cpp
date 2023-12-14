@@ -16,12 +16,8 @@
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
 
-wgpu::Buffer indexBuffer;
-wgpu::Buffer vertexBuffer;
 wgpu::Texture texture;
 wgpu::Sampler sampler;
-wgpu::RenderPipeline pipeline;
-wgpu::BindGroup bindGroup;
 
 wgpu::RenderPipeline pipeline2;
 wgpu::Buffer vertexBuffer2;
@@ -30,9 +26,21 @@ wgpu::Buffer uniformBuffer;
 wgpu::BindGroup bindGroup2;
 
 struct MyUniforms {
+	glm::mat4x4 projectionMatrix;
+	glm::mat4x4 viewMatrix;
+	glm::mat4x4 modelMatrix;
+	std::array<float, 4> color;
 	float time;
-	std::array<float, 4> color;  // or float color[4]
+	float _pad[3];
 };
+static_assert(sizeof(MyUniforms) % 16 == 0);
+
+struct VertexAttributes {
+	glm::vec3 position;
+	glm::vec3 normal;
+	glm::vec3 color;
+};
+
 MyUniforms uniforms;
 
 void initTextures(wgpu::Device device, wgpu::Queue queue)
@@ -86,151 +94,144 @@ bool Render::Create(void* glfwWindow)
 
 	m_data->depthStencilView = createDefaultDepthStencilView(m_data->device, kWidth, kHeight);
 
-	constexpr uint32_t indexData[] = { 0, 1, 2 };
-	indexBuffer = CreateBuffer(m_data->device, indexData, sizeof(indexData), wgpu::BufferUsage::Index);
-
-	constexpr float vertexData[] = { 0.0f, 0.5f, 0.0f, 1.0f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f, -0.5f, 0.0f, 1.0f };
-	vertexBuffer = CreateBuffer(m_data->device, vertexData, sizeof(vertexData), wgpu::BufferUsage::Vertex);
-
-	initTextures(m_data->device, m_data->queue);
-
-	wgpu::ShaderModule vsModule = CreateShaderModule(m_data->device, R"(
-        @vertex fn main(@location(0) pos : vec4f)
-                            -> @builtin(position) vec4f {
-            return pos;
-        })");
-
-	wgpu::ShaderModule fsModule = CreateShaderModule(m_data->device, R"(
-        @group(0) @binding(0) var mySampler: sampler;
-        @group(0) @binding(1) var myTexture : texture_2d<f32>;
-
-        @fragment fn main(@builtin(position) FragCoord : vec4f)
-                              -> @location(0) vec4f {
-            return textureSample(myTexture, mySampler, FragCoord.xy / vec2f(1024.0, 768.0));
-        })");
-
-	auto bgl = dawn::utils::MakeBindGroupLayout(
-		m_data->device, {
-					{0, wgpu::ShaderStage::Fragment, wgpu::SamplerBindingType::Filtering},
-					{1, wgpu::ShaderStage::Fragment, wgpu::TextureSampleType::Float},
-		});
-
-	dawn::utils::ComboRenderPipelineDescriptor pipelineDescriptor{};
-	pipelineDescriptor.layout = dawn::utils::MakeBasicPipelineLayout(m_data->device, &bgl);
-	pipelineDescriptor.vertex.module = vsModule;
-	pipelineDescriptor.vertex.bufferCount = 1;
-	pipelineDescriptor.cBuffers[0].arrayStride = 4 * sizeof(float);
-	pipelineDescriptor.cBuffers[0].attributeCount = 1;
-	pipelineDescriptor.cAttributes[0].format = wgpu::VertexFormat::Float32x4;
-	pipelineDescriptor.cFragment.module = fsModule;
-	pipelineDescriptor.cTargets[0].format = wgpu::TextureFormat::BGRA8Unorm;
-	pipelineDescriptor.EnableDepthStencil(wgpu::TextureFormat::Depth24PlusStencil8);
-
-	pipeline = m_data->device.CreateRenderPipeline(&pipelineDescriptor);
-
-	wgpu::TextureView view = texture.CreateView();
-	bindGroup = dawn::utils::MakeBindGroup(m_data->device, bgl, { {0, sampler}, {1, view} });
-
-
 	const char* shaderText = R"(
 struct MyUniforms {
-    time: f32,
-    color: vec4f,
+	projectionMatrix: mat4x4f,
+	viewMatrix: mat4x4f,
+	modelMatrix: mat4x4f,
+	color: vec4f,
+	time: f32,
 };
 
-@group(0) @binding(0) var<uniform> uMyUniforms: MyUniforms;
-
 struct VertexInput {
-	@location(0) position: vec2f,
-	@location(1) color: vec3f,
+	@location(0) position: vec3f,
+	@location(1) normal: vec3f,
+	@location(2) color: vec3f,
 };
 
 struct VertexOutput {
 	@builtin(position) position: vec4f,
 	@location(0) color: vec3f,
+	@location(1) normal: vec3f,
 };
+
+@group(0) @binding(0) var<uniform> uMyUniforms: MyUniforms;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput
 {
 	var out: VertexOutput;
-	let ratio = 640.0 / 480.0;
-	// We move the scene depending on the time
-	var offset = vec2f(-0.6875, -0.463);
-	offset += 0.3 * vec2f(cos(uMyUniforms.time), sin(uMyUniforms.time));
-
-	out.position = vec4f(in.position.x + offset.x, (in.position.y + offset.y) * ratio, 0.0, 1.0);
+	out.position = uMyUniforms.projectionMatrix * uMyUniforms.viewMatrix * uMyUniforms.modelMatrix * vec4f(in.position, 1.0);
 	out.color = in.color;
+	out.normal = (uMyUniforms.modelMatrix * vec4f(in.normal, 0.0)).xyz;
 	return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
-	let color = in.color * uMyUniforms.color.rgb;
+	let normal = normalize(in.normal);
+
+	let lightColor1 = vec3f(1.0, 0.9, 0.6);
+	let lightColor2 = vec3f(0.6, 0.9, 1.0);
+	let lightDirection1 = vec3f(0.5, -0.9, 0.1);
+	let lightDirection2 = vec3f(0.2, 0.4, 0.3);
+	let shading1 = max(0.0, dot(lightDirection1, normal));
+	let shading2 = max(0.0, dot(lightDirection2, normal));
+	let shading = shading1 * lightColor1 + shading2 * lightColor2;
+	let color = in.color * shading;
+
 	// Gamma-correction
 	let corrected_color = pow(color, vec3f(2.2));
-	return vec4f(corrected_color, uMyUniforms.color.a);	
-//return vec4f(in.color, 1.0);
+	return vec4f(corrected_color, uMyUniforms.color.a);
 }
 )";
-	wgpu::ShaderModule vsModule2 = CreateShaderModule(m_data->device, shaderText);
-	wgpu::ShaderModule fsModule2 = CreateShaderModule(m_data->device, shaderText);
+	wgpu::ShaderModule shaderModule = CreateShaderModule(m_data->device, shaderText);
 
 	constexpr float vertexData2[] = {
-		// x,     y,      r,     g,     b
-		0.5f,   0.0f,    0.0f, 0.353f, 0.612f,
-		1.0f,   0.866f,  0.0f, 0.353f, 0.612f,
-		0.0f,   0.866f,  0.0f, 0.353f, 0.612f,
+		//  x    y    z       nx   ny  nz     r   g   b
+		//# The base
+		-0.5f, -0.5f, -0.3f,     0.0f, -1.0f, 0.0f,    1.0f, 1.0f, 1.0f,
+		+0.5f, -0.5f, -0.3f,     0.0f, -1.0f, 0.0f,    1.0f, 1.0f, 1.0f,
+		+0.5f, +0.5f, -0.3f,     0.0f, -1.0f, 0.0f,    1.0f, 1.0f, 1.0f,
+		-0.5f, +0.5f, -0.3f,     0.0f, -1.0f, 0.0f,    1.0f, 1.0f, 1.0f,
+		//# Face sides have their own copy of the vertices
+		//# because they have a different normal vector.
+		-0.5f, -0.5f, -0.3f,  0.0f, -0.848f, 0.53f,    1.0f, 1.0f, 1.0f,
+		+0.5f, -0.5f, -0.3f,  0.0f, -0.848f, 0.53f,    1.0f, 1.0f, 1.0f,
+		+0.0f, +0.0f, +0.5f,  0.0f, -0.848f, 0.53f,    1.0f, 1.0f, 1.0f,
 
-		0.75f,  0.433f,  0.0f, 0.4f,   0.7f,
-		1.25f,  0.433f,  0.0f, 0.4f,   0.7f,
-		1.0f,   0.866f,  0.0f, 0.4f,   0.7f,
+		+0.5f, -0.5f, -0.3f,   0.848f, 0.0f, 0.53f,    1.0f, 1.0f, 1.0f,
+		+0.5f, +0.5f, -0.3f,   0.848f, 0.0f, 0.53f,    1.0f, 1.0f, 1.0f,
+		+0.0f, +0.0f, +0.5f,   0.848f, 0.0f, 0.53f,    1.0f, 1.0f, 1.0f,
 
-		1.0f,   0.0f,    0.0f, 0.463f, 0.8f,
-		1.25f,  0.433f,  0.0f, 0.463f, 0.8f,
-		0.75f,  0.433f,  0.0f, 0.463f, 0.8f,
+		+0.5f, +0.5f, -0.3f,   0.0f, 0.848f, 0.53f,    1.0f, 1.0f, 1.0f,
+		-0.5f, +0.5f, -0.3f,   0.0f, 0.848f, 0.53f,    1.0f, 1.0f, 1.0f,
+		+0.0f, +0.0f, +0.5f,   0.0f, 0.848f, 0.53f,    1.0f, 1.0f, 1.0f,
 
-		1.25f,  0.433f,  0.0f, 0.525f, 0.91f,
-		1.375f, 0.65f,   0.0f, 0.525f, 0.91f,
-		1.125f, 0.65f,   0.0f, 0.525f, 0.91f,
-
-		1.125f, 0.65f,   0.0f, 0.576f, 1.0f,
-		1.375f, 0.65f,   0.0f, 0.576f, 1.0f,
-		1.25f,  0.866f,  0.0f, 0.576f, 1.0f,
-
+		-0.5f, +0.5f, -0.3f, -0.848f, 0.0f, 0.53f,   1.0f, 1.0f, 1.0f,
+		-0.5f, -0.5f, -0.3f, -0.848f, 0.0f, 0.53f,   1.0f, 1.0f, 1.0f,
+		+0.0f, +0.0f, +0.5f, -0.848f, 0.0f, 0.53f,   1.0f, 1.0f, 1.0f,
 	};
 	vertexBuffer2 = CreateBuffer(m_data->device, vertexData2, sizeof(vertexData2), wgpu::BufferUsage::Vertex);
 
 	std::vector<uint16_t> indexData2 = {
+		//# Base
 		 0,  1,  2,
-		 3,  4,  5,
-		 6,  7,  8,
-		 9, 10, 11,
-		12, 13, 14,
+		 0,  2,  3,
+		//# Sides
+		 4,  5,  6,
+		 7,  8,  9,
+		10, 11, 12,
+		13, 14, 15,
 	};
-	indexBuffer2 = CreateBuffer(m_data->device, indexData2.data(), sizeof(indexData2), wgpu::BufferUsage::Index);
+	indexBuffer2 = CreateBuffer(m_data->device, indexData2.data(), indexData2.size() * sizeof(uint16_t), wgpu::BufferUsage::Index);
+
+	float angle1 = 2.0f; // arbitrary time
+	glm::mat4x4 M(1.0);
+	M = glm::rotate(M, angle1, glm::vec3(0.0, 0.0, 1.0));
+	M = glm::translate(M, glm::vec3(0.5, 0.0, 0.0));
+	M = glm::scale(M, glm::vec3(0.3f));
+	uniforms.modelMatrix = M;
+
+	float angle2 = 3.0f * glm::pi<float>() / 4.0f;
+	glm::vec3 focalPoint(0.0, 0.0, -2.0);
+	glm::mat4x4 V(1.0);
+	V = glm::translate(V, -focalPoint);
+	V = glm::rotate(V, -angle2, glm::vec3(1.0, 0.0, 0.0));
+	uniforms.viewMatrix = V;
+
+	float ratio = 640.0f / 480.0f;
+	float focalLength = 2.0;
+	float near = 0.01f;
+	float far = 100.0f;
+	float fov = 2 * glm::atan(1 / focalLength);
+	uniforms.projectionMatrix = glm::perspective(fov, ratio, near, far);
 
 	uniforms.time = 1.0f;
 	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
-
-	uniformBuffer = CreateBuffer(m_data->device, &currentTime, sizeof(float), wgpu::BufferUsage::Uniform);
-
+	uniformBuffer = CreateBuffer(m_data->device, &uniforms, sizeof(MyUniforms), wgpu::BufferUsage::Uniform);
 
 	// Create binding layout
 	wgpu::BindGroupLayoutEntry bindingLayout{};
 	// The binding index as used in the @binding attribute in the shader
 	bindingLayout.binding = 0;
 	// The stage that needs to access this resource
-	bindingLayout.visibility = wgpu::ShaderStage::Vertex;
+	bindingLayout.visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment;
 	bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
-	bindingLayout.buffer.minBindingSize = sizeof(float);
+	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
 
 	// Create a bind group layout
 	wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
 	bindGroupLayoutDesc.entryCount = 1;
 	bindGroupLayoutDesc.entries = &bindingLayout;
 	wgpu::BindGroupLayout bindGroupLayout = m_data->device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+
+	// Create the pipeline layout
+	wgpu::PipelineLayoutDescriptor layoutDesc{};
+	layoutDesc.bindGroupLayoutCount = 1;
+	layoutDesc.bindGroupLayouts = (wgpu::BindGroupLayout*)&bindGroupLayout;
+	wgpu::PipelineLayout layout = m_data->device.CreatePipelineLayout(&layoutDesc);
 
 	// Create a binding
 	wgpu::BindGroupEntry binding{};
@@ -241,7 +242,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	// We can specify an offset within the buffer, so that a single buffer can hold multiple uniform blocks.
 	binding.offset = 0;
 	// And we specify again the size of the buffer.
-	binding.size = sizeof(float);
+	binding.size = sizeof(MyUniforms);
+	
 	// A bind group contains one or multiple bindings
 	wgpu::BindGroupDescriptor bindGroupDesc{};
 	bindGroupDesc.layout = bindGroupLayout;
@@ -250,29 +252,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	bindGroupDesc.entries = &binding;
 	bindGroup2 = m_data->device.CreateBindGroup(&bindGroupDesc);
 
-
-
-
-	// Create the pipeline layout
-	wgpu::PipelineLayoutDescriptor layoutDesc{};
-	layoutDesc.bindGroupLayoutCount = 1;
-	layoutDesc.bindGroupLayouts = (wgpu::BindGroupLayout*)&bindGroupLayout;
-	wgpu::PipelineLayout layout = m_data->device.CreatePipelineLayout(&layoutDesc);
-
-	std::vector<wgpu::VertexAttribute> vertexAttribs(2);
+	// Vertex fetch
+	std::vector<wgpu::VertexAttribute> vertexAttribs(3);
 	// Position attribute
 	vertexAttribs[0].shaderLocation = 0;
-	vertexAttribs[0].format = wgpu::VertexFormat::Float32x2;
-	vertexAttribs[0].offset = 0;
-	// Color attribute
+	vertexAttribs[0].format = wgpu::VertexFormat::Float32x3;
+	vertexAttribs[0].offset = offsetof(VertexAttributes, position);
+	// Normal attribute
 	vertexAttribs[1].shaderLocation = 1;
 	vertexAttribs[1].format = wgpu::VertexFormat::Float32x3;
-	vertexAttribs[1].offset = 2 * sizeof(float);
+	vertexAttribs[1].offset = offsetof(VertexAttributes, normal);
+	// Color attribute
+	vertexAttribs[2].shaderLocation = 2;
+	vertexAttribs[2].format = wgpu::VertexFormat::Float32x3;
+	vertexAttribs[2].offset = offsetof(VertexAttributes, color);
 
 	wgpu::VertexBufferLayout vertexBufferLayout{};
 	vertexBufferLayout.attributeCount = static_cast<uint32_t>(vertexAttribs.size());
 	vertexBufferLayout.attributes = vertexAttribs.data();
-	vertexBufferLayout.arrayStride = 5 * sizeof(float);
+	vertexBufferLayout.arrayStride = sizeof(VertexAttributes);
 	vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
 
 	wgpu::BlendState blendState{};
@@ -288,17 +286,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	colorTarget.writeMask = wgpu::ColorWriteMask::All;
 
 	wgpu::FragmentState fragmentState{};
-	fragmentState.module = fsModule2;
+	fragmentState.module = shaderModule;
 	fragmentState.entryPoint = "fs_main";
 	fragmentState.constantCount = 0;
 	fragmentState.constants = nullptr;
 	fragmentState.targetCount = 1;
 	fragmentState.targets = &colorTarget;
 
+	wgpu::DepthStencilState depthStencilState{};
+	depthStencilState.depthCompare = wgpu::CompareFunction::Less;
+	depthStencilState.depthWriteEnabled = true;
+	// Store the format in a variable as later parts of the code depend on it
+	wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
+	depthStencilState.format = depthTextureFormat;
+	// Deactivate the stencil alltogether
+	depthStencilState.stencilReadMask = 0;
+	depthStencilState.stencilWriteMask = 0;
+
 	wgpu::RenderPipelineDescriptor pipelineDesc{};
 	pipelineDesc.vertex.bufferCount = 1;
 	pipelineDesc.vertex.buffers = &vertexBufferLayout;
-	pipelineDesc.vertex.module = vsModule2;
+	pipelineDesc.vertex.module = shaderModule;
 	pipelineDesc.vertex.entryPoint = "vs_main";
 	pipelineDesc.vertex.constantCount = 0;
 	pipelineDesc.vertex.constants = nullptr;
@@ -307,7 +315,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	pipelineDesc.primitive.frontFace = wgpu::FrontFace::CCW;
 	pipelineDesc.primitive.cullMode = wgpu::CullMode::None;
 	pipelineDesc.fragment = &fragmentState;
-	pipelineDesc.depthStencil = nullptr;
+	pipelineDesc.depthStencil = &depthStencilState;
 	pipelineDesc.multisample.count = 1;
 	pipelineDesc.multisample.mask = ~0u;
 	pipelineDesc.multisample.alphaToCoverageEnabled = false;
@@ -327,11 +335,14 @@ void Render::Destroy()
 //-----------------------------------------------------------------------------
 void Render::Frame()
 {
-	// Update uniform buffer
-	uniforms.time = static_cast<float>(glfwGetTime());
-	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
-	m_data->queue.WriteBuffer(uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
-
+	// Update view matrix
+	uniforms.time = static_cast<float>(glfwGetTime()); // glfwGetTime returns a double
+	auto T1 = glm::translate(glm::mat4(1.0f), glm::vec3(0.5, 0.0, 0.0));
+	auto S = glm::scale(glm::mat4(1.0f), glm::vec3(0.3f));
+	auto angle1 = uniforms.time;
+	auto R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
+	uniforms.modelMatrix = R1 * T1 * S;
+	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, modelMatrix), &uniforms.modelMatrix, sizeof(MyUniforms::modelMatrix));
 
 	wgpu::TextureView backbufferView = m_data->swapChain.GetCurrentTextureView();
 	if (!backbufferView)
@@ -345,38 +356,40 @@ void Render::Frame()
 	renderPassColorAttachment.resolveTarget = nullptr;
 	renderPassColorAttachment.loadOp = wgpu::LoadOp::Clear;
 	renderPassColorAttachment.storeOp = wgpu::StoreOp::Store;
-	renderPassColorAttachment.clearValue = wgpu::Color{ 0.95f, 0.35f, 0.49f, 1.0f };
+	renderPassColorAttachment.clearValue = wgpu::Color{ 0.05f, 0.05f, 0.05f, 1.0f };
 
-	//wgpu::RenderPassDepthStencilAttachment cDepthStencilAttachmentInfo{};
-	//cDepthStencilAttachmentInfo.depthClearValue = 1.0f;
-	//cDepthStencilAttachmentInfo.stencilClearValue = 0;
-	//cDepthStencilAttachmentInfo.depthLoadOp = wgpu::LoadOp::Clear;
-	//cDepthStencilAttachmentInfo.depthStoreOp = wgpu::StoreOp::Store;
-	//cDepthStencilAttachmentInfo.stencilLoadOp = wgpu::LoadOp::Clear;
-	//cDepthStencilAttachmentInfo.stencilStoreOp = wgpu::StoreOp::Store;
-	//cDepthStencilAttachmentInfo.view = m_data->depthStencilView;
+	wgpu::RenderPassDepthStencilAttachment depthStencilAttachment{};
+	depthStencilAttachment.view = m_data->depthStencilView;
+	// The initial value of the depth buffer, meaning "far"
+	depthStencilAttachment.depthClearValue = 1.0f;
+	// Operation settings comparable to the color attachment
+	depthStencilAttachment.depthLoadOp = wgpu::LoadOp::Clear;
+	depthStencilAttachment.depthStoreOp = wgpu::StoreOp::Store;
+	// we could turn off writing to the depth buffer globally here
+	depthStencilAttachment.depthReadOnly = false;
+	// Stencil setup, mandatory but unused
+	depthStencilAttachment.stencilClearValue = 0;
+	depthStencilAttachment.stencilLoadOp = wgpu::LoadOp::Clear;
+	depthStencilAttachment.stencilStoreOp = wgpu::StoreOp::Store;
+	//depthStencilAttachment.stencilReadOnly = true;
 
 	wgpu::RenderPassDescriptor renderPassDesc{};
 	renderPassDesc.colorAttachmentCount = 1;
 	renderPassDesc.colorAttachments = &renderPassColorAttachment;
-	//renderPassDesc.depthStencilAttachment = &cDepthStencilAttachmentInfo;
-	renderPassDesc.depthStencilAttachment = nullptr;
+	renderPassDesc.depthStencilAttachment = &depthStencilAttachment;
 
 	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
 		wgpu::RenderPassEncoder renderPass = encoder.BeginRenderPass(&renderPassDesc);
 
-		//renderPass.SetPipeline(pipeline);
-		//renderPass.SetBindGroup(0, bindGroup);
-		//renderPass.SetVertexBuffer(0, vertexBuffer);
-		//renderPass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint32);
-		//renderPass.DrawIndexed(3);
+		uint32_t dynamicOffset = 0;
+
 
 		renderPass.SetPipeline(pipeline2);
-		renderPass.SetBindGroup(0, bindGroup2, 0, nullptr);
 		renderPass.SetVertexBuffer(0, vertexBuffer2, 0/*, vertexData.size() * sizeof(float)*/);
 		renderPass.SetIndexBuffer(indexBuffer2, wgpu::IndexFormat::Uint16, 0/*, indexData.size() * sizeof(uint16_t)*/);
-		renderPass.DrawIndexed(15, 1, 0, 0);
+		renderPass.SetBindGroup(0, bindGroup2, 0, nullptr);
+		renderPass.DrawIndexed(18, 1, 0, 0);
 		renderPass.End();
 	}
 
