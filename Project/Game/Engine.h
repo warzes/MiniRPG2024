@@ -100,6 +100,8 @@ public:
 		engine.run(std::make_unique<T>(engine));
 	}
 
+	void OnResize();
+
 private:
 	void run(std::unique_ptr<IApp> app);
 	bool init();
@@ -107,6 +109,8 @@ private:
 	bool isRun() const;
 
 	void exit();
+
+
 
 	std::unique_ptr<IApp> m_app;
 	EngineData* m_data = nullptr;

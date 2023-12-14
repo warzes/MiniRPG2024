@@ -30,6 +30,12 @@ int WindowHeight = 0;
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
 //-----------------------------------------------------------------------------
+void onWindowResize(GLFWwindow* window, int /* width */, int /* height */) noexcept
+{
+	auto that = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
+	if (that != nullptr) that->OnResize();
+}
+//-----------------------------------------------------------------------------
 struct EngineData
 {
 	GLFWwindow* window = nullptr;
@@ -69,7 +75,6 @@ void Engine::run(std::unique_ptr<IApp> app)
 				m_render.Frame();
 
 				glfwPollEvents();
-				glfwGetFramebufferSize(m_data->window, &WindowWidth, &WindowHeight);
 				m_app->Update();
 			}
 		}
@@ -97,11 +102,16 @@ bool Engine::init()
 		return false;
 	}
 
+	glfwSetWindowUserPointer(m_data->window, this);
+	glfwSetFramebufferSizeCallback(m_data->window, onWindowResize);
+
 	if (!m_render.Create((void*)m_data->window))
 	{
 		Error("Render system not create!");
 		return false;
 	}
+
+	glfwGetFramebufferSize(m_data->window, &WindowWidth, &WindowHeight);
 
 	return true;
 }
@@ -122,5 +132,13 @@ bool Engine::isRun() const
 void Engine::exit()
 {
 	IsEngineClose = true;
+}
+//-----------------------------------------------------------------------------
+void Engine::OnResize()
+{
+	glfwGetFramebufferSize(m_data->window, &WindowWidth, &WindowHeight);
+	
+	if (!m_render.Resize(WindowWidth, WindowHeight))
+		Fatal("render resize error");
 }
 //-----------------------------------------------------------------------------
