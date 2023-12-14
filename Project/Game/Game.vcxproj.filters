@@ -975,6 +975,9 @@
     <ClInclude Include="..\3rdparty\tiny_obj_loader.h">
       <Filter>Engine\3rdparty</Filter>
     </ClInclude>
+    <ClInclude Include="RenderModel.h">
+      <Filter>Engine\Private</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\3rdparty\glm\detail\func_common.inl">

@@ -399,6 +399,7 @@
     <ClInclude Include="Engine.h" />
     <ClInclude Include="Render.h" />
     <ClInclude Include="RenderCore.h" />
+    <ClInclude Include="RenderModel.h" />
     <ClInclude Include="RenderResources.h" />
     <ClInclude Include="RenderUtils.h" />
     <ClInclude Include="TestApp.h" />

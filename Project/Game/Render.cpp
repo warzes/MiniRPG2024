@@ -12,6 +12,7 @@
 #include "RenderUtils.h"
 #include "RenderCore.h"
 #include "RenderResources.h"
+#include "RenderModel.h"
 //-----------------------------------------------------------------------------
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
@@ -35,13 +36,14 @@ struct MyUniforms {
 };
 static_assert(sizeof(MyUniforms) % 16 == 0);
 
-struct VertexAttributes {
-	glm::vec3 position;
-	glm::vec3 normal;
-	glm::vec3 color;
-};
-
 MyUniforms uniforms;
+
+int indexCount;
+std::vector<VertexAttributes> vertexData;
+float angle1;
+glm::mat4x4 R1;
+glm::mat4x4 T1;
+glm::mat4x4 S;
 
 void initTextures(wgpu::Device device, wgpu::Queue queue)
 {
@@ -173,7 +175,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 		-0.5f, -0.5f, -0.3f, -0.848f, 0.0f, 0.53f,   1.0f, 1.0f, 1.0f,
 		+0.0f, +0.0f, +0.5f, -0.848f, 0.0f, 0.53f,   1.0f, 1.0f, 1.0f,
 	};
-	vertexBuffer2 = CreateBuffer(m_data->device, vertexData2, sizeof(vertexData2), wgpu::BufferUsage::Vertex);
+	//vertexBuffer2 = CreateBuffer(m_data->device, vertexData2, sizeof(vertexData2), wgpu::BufferUsage::Vertex);
 
 	std::vector<uint16_t> indexData2 = {
 		//# Base
@@ -187,26 +189,44 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	};
 	indexBuffer2 = CreateBuffer(m_data->device, indexData2.data(), indexData2.size() * sizeof(uint16_t), wgpu::BufferUsage::Index);
 
-	float angle1 = 2.0f; // arbitrary time
-	glm::mat4x4 M(1.0);
-	M = glm::rotate(M, angle1, glm::vec3(0.0, 0.0, 1.0));
-	M = glm::translate(M, glm::vec3(0.5, 0.0, 0.0));
-	M = glm::scale(M, glm::vec3(0.3f));
-	uniforms.modelMatrix = M;
+	bool success = loadGeometryFromObj("../Data/models/mammoth.obj", vertexData);
+	if (!success) 
+	{
+		Fatal("Could not load geometry!");
+		return false;
+	}
 
+	vertexBuffer2 = CreateBuffer(m_data->device, vertexData.data(), vertexData.size() * sizeof(VertexAttributes), wgpu::BufferUsage::Vertex);
+	indexCount = static_cast<int>(vertexData.size());
+
+
+	// Translate the view
+	glm::vec3 focalPoint(0.0, 0.0, -1.0);
+	// Rotate the object
+	angle1 = 2.0f; // arbitrary time
+	// Rotate the view point
 	float angle2 = 3.0f * glm::pi<float>() / 4.0f;
-	glm::vec3 focalPoint(0.0, 0.0, -2.0);
-	glm::mat4x4 V(1.0);
-	V = glm::translate(V, -focalPoint);
-	V = glm::rotate(V, -angle2, glm::vec3(1.0, 0.0, 0.0));
-	uniforms.viewMatrix = V;
+
+	S = glm::scale(glm::mat4x4(1.0), glm::vec3(0.3f));
+	T1 = glm::mat4x4(1.0);
+	R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
+	uniforms.modelMatrix = R1 * T1 * S;
+
+	glm::mat4x4 R2 = glm::rotate(glm::mat4x4(1.0), -angle2, glm::vec3(1.0, 0.0, 0.0));
+	glm::mat4x4 T2 = glm::translate(glm::mat4x4(1.0), -focalPoint);
+	uniforms.viewMatrix = T2 * R2;
 
 	float ratio = 640.0f / 480.0f;
 	float focalLength = 2.0;
 	float near = 0.01f;
 	float far = 100.0f;
-	float fov = 2 * glm::atan(1 / focalLength);
-	uniforms.projectionMatrix = glm::perspective(fov, ratio, near, far);
+	float divider = 1 / (focalLength * (far - near));
+	uniforms.projectionMatrix = glm::transpose(glm::mat4x4(
+		1.0, 0.0, 0.0, 0.0,
+		0.0, ratio, 0.0, 0.0,
+		0.0, 0.0, far * divider, -far * near * divider,
+		0.0, 0.0, 1.0 / focalLength, 0.0
+	));	
 
 	uniforms.time = 1.0f;
 	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
@@ -335,12 +355,14 @@ void Render::Destroy()
 //-----------------------------------------------------------------------------
 void Render::Frame()
 {
-	// Update view matrix
+	// Update uniform buffer
 	uniforms.time = static_cast<float>(glfwGetTime()); // glfwGetTime returns a double
-	auto T1 = glm::translate(glm::mat4(1.0f), glm::vec3(0.5, 0.0, 0.0));
-	auto S = glm::scale(glm::mat4(1.0f), glm::vec3(0.3f));
-	auto angle1 = uniforms.time;
-	auto R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
+	// Only update the 1-st float of the buffer
+	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, time), &uniforms.time, sizeof(MyUniforms::time));
+
+	// Update view matrix
+	angle1 = uniforms.time;
+	R1 = glm::rotate(glm::mat4x4(1.0), angle1, glm::vec3(0.0, 0.0, 1.0));
 	uniforms.modelMatrix = R1 * T1 * S;
 	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, modelMatrix), &uniforms.modelMatrix, sizeof(MyUniforms::modelMatrix));
 
@@ -386,10 +408,10 @@ void Render::Frame()
 
 
 		renderPass.SetPipeline(pipeline2);
-		renderPass.SetVertexBuffer(0, vertexBuffer2, 0/*, vertexData.size() * sizeof(float)*/);
-		renderPass.SetIndexBuffer(indexBuffer2, wgpu::IndexFormat::Uint16, 0/*, indexData.size() * sizeof(uint16_t)*/);
+		renderPass.SetVertexBuffer(0, vertexBuffer2, 0, vertexData.size() * sizeof(VertexAttributes));
+		//renderPass.SetIndexBuffer(indexBuffer2, wgpu::IndexFormat::Uint16, 0/*, indexData.size() * sizeof(uint16_t)*/);
 		renderPass.SetBindGroup(0, bindGroup2, 0, nullptr);
-		renderPass.DrawIndexed(18, 1, 0, 0);
+		renderPass.Draw(indexCount, 1, 0, 0);
 		renderPass.End();
 	}
 
