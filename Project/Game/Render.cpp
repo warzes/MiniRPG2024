@@ -1,5 +1,8 @@
 ﻿#include "Engine.h"
 
+тинирендерен
+https://www.scratchapixel.com/index.html
+
 #include <Dawn/webgpu.h>
 #include <dawn/webgpu_cpp.h>
 #include <Dawn/native/DawnNative.h>
@@ -21,13 +24,22 @@
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
 
+namespace ImGui {
+	bool DragDirection(const char* label, glm::vec4& direction)
+	{
+		glm::vec2 angles = glm::degrees(glm::polar(glm::vec3(direction)));
+		bool changed = ImGui::DragFloat2(label, glm::value_ptr(angles));
+		direction = glm::vec4(glm::euclidean(glm::radians(angles)), direction.w);
+		return changed;
+	}
+} // namespace ImGui
+
 wgpu::Texture texture;
 wgpu::Sampler sampler;
 
 wgpu::RenderPipeline pipeline2;
 wgpu::Buffer vertexBuffer2;
 wgpu::Buffer indexBuffer2;
-wgpu::Buffer uniformBuffer;
 wgpu::BindGroup bindGroup2;
 
 struct MyUniforms {
@@ -40,7 +52,18 @@ struct MyUniforms {
 };
 static_assert(sizeof(MyUniforms) % 16 == 0);
 
+struct LightingUniforms 
+{
+	std::array<glm::vec4, 2> directions;
+	std::array<glm::vec4, 2> colors;
+};
+static_assert(sizeof(LightingUniforms) % 16 == 0);
+
+wgpu::Buffer uniformBuffer = nullptr;
 MyUniforms uniforms;
+
+wgpu::Buffer m_lightingUniformBuffer = nullptr;
+LightingUniforms m_lightingUniforms;
 
 int indexCount;
 std::vector<VertexAttributes> vertexData;
@@ -83,6 +106,8 @@ struct DragState {
 CameraState m_cameraState;
 DragState m_drag;
 
+bool m_lightingUniformsChanged = true;
+
 bool updateDragInertia()
 {
 	constexpr float eps = 1e-4f;
@@ -103,6 +128,46 @@ bool updateDragInertia()
 	return false;
 }
 
+bool initBindGroupLayout(wgpu::Device device)
+{
+	// Since we now have 2 bindings, we use a vector to store them
+	std::vector<wgpu::BindGroupLayoutEntry> bindingLayoutEntries(4);
+
+	wgpu::BindGroupLayoutEntry& bindingLayout = bindingLayoutEntries[0];
+	// The binding index as used in the @binding attribute in the shader
+	bindingLayout.binding = 0;
+	// The stage that needs to access this resource
+	bindingLayout.visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment;
+	bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
+	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
+
+	wgpu::BindGroupLayoutEntry& textureBindingLayout = bindingLayoutEntries[1];
+	// Setup texture binding
+	textureBindingLayout.binding = 1;
+	textureBindingLayout.visibility = wgpu::ShaderStage::Fragment;
+	textureBindingLayout.texture.sampleType = wgpu::TextureSampleType::Float;
+	textureBindingLayout.texture.viewDimension = wgpu::TextureViewDimension::e2D;
+
+	// The texture sampler binding
+	wgpu::BindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
+	samplerBindingLayout.binding = 2;
+	samplerBindingLayout.visibility = wgpu::ShaderStage::Fragment;
+	samplerBindingLayout.sampler.type = wgpu::SamplerBindingType::Filtering;
+
+	wgpu::BindGroupLayoutEntry& lightingUniformLayout = bindingLayoutEntries[3];
+	lightingUniformLayout.binding = 3;
+	lightingUniformLayout.visibility = wgpu::ShaderStage::Fragment;
+	lightingUniformLayout.buffer.type = wgpu::BufferBindingType::Uniform;
+	lightingUniformLayout.buffer.minBindingSize = sizeof(LightingUniforms);
+
+	// Create a bind group layout
+	wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
+	bindGroupLayoutDesc.entryCount = (uint32_t)bindingLayoutEntries.size();
+	bindGroupLayoutDesc.entries = bindingLayoutEntries.data();
+	bindGroupLayout = device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+
+	return (bindGroupLayout != nullptr);
+}
 
 bool initRenderPipeline(wgpu::Device device, wgpu::TextureFormat swapChainFormat, wgpu::TextureFormat depthTextureFormat)
 {
@@ -137,6 +202,7 @@ struct VertexOutput {
 @group(0) @binding(0) var<uniform> uMyUniforms: MyUniforms;
 @group(0) @binding(1) var baseColorTexture: texture_2d<f32>;
 @group(0) @binding(2) var textureSampler: sampler;
+@group(0) @binding(3) var<uniform> uLighting: LightingUniforms;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput
@@ -154,13 +220,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
 	// Compute shading
 	let normal = normalize(in.normal);
-	let lightDirection1 = vec3f(0.5, -0.9, 0.1);
-	let lightDirection2 = vec3f(0.2, 0.4, 0.3);
-	let lightColor1 = vec3f(1.0, 0.9, 0.6);
-	let lightColor2 = vec3f(0.6, 0.9, 1.0);
-	let shading1 = max(0.0, dot(lightDirection1, normal));
-	let shading2 = max(0.0, dot(lightDirection2, normal));
-	let shading = shading1 * lightColor1 + shading2 * lightColor2;
+	//let lightDirection1 = vec3f(0.5, -0.9, 0.1);
+	//let lightDirection2 = vec3f(0.2, 0.4, 0.3);
+	//let lightColor1 = vec3f(1.0, 0.9, 0.6);
+	//let lightColor2 = vec3f(0.6, 0.9, 1.0);
+	//let shading1 = max(0.0, dot(lightDirection1, normal));
+	//let shading2 = max(0.0, dot(lightDirection2, normal));
+	//let shading = shading1 * lightColor1 + shading2 * lightColor2;
+
+	var shading = vec3f(0.0);
+	for (var i: i32 = 0; i < 2; i++) {
+		let direction = normalize(uLighting.directions[i].xyz);
+		let color = uLighting.colors[i].rgb;
+		shading += max(0.0, dot(direction, normal)) * color;
+	}
 
 	// Sample texture
 	let baseColor = textureSample(baseColorTexture, textureSampler, in.uv).rgb;
@@ -228,37 +301,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	// Deactivate the stencil alltogether
 	depthStencilState.stencilReadMask = 0;
 	depthStencilState.stencilWriteMask = 0;
-
-	// Since we now have 2 bindings, we use a vector to store them
-	std::vector<wgpu::BindGroupLayoutEntry> bindingLayoutEntries(3);
-
-	wgpu::BindGroupLayoutEntry& bindingLayout = bindingLayoutEntries[0];
-	// The binding index as used in the @binding attribute in the shader
-	bindingLayout.binding = 0;
-	// The stage that needs to access this resource
-	bindingLayout.visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment;
-	bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
-	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
-
-	wgpu::BindGroupLayoutEntry& textureBindingLayout = bindingLayoutEntries[1];
-	// Setup texture binding
-	textureBindingLayout.binding = 1;
-	textureBindingLayout.visibility = wgpu::ShaderStage::Fragment;
-	textureBindingLayout.texture.sampleType = wgpu::TextureSampleType::Float;
-	textureBindingLayout.texture.viewDimension = wgpu::TextureViewDimension::e2D;
-
-	// The texture sampler binding
-	wgpu::BindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
-	samplerBindingLayout.binding = 2;
-	samplerBindingLayout.visibility = wgpu::ShaderStage::Fragment;
-	samplerBindingLayout.sampler.type = wgpu::SamplerBindingType::Filtering;
-
-	// Create a bind group layout
-	wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
-	bindGroupLayoutDesc.entryCount = (uint32_t)bindingLayoutEntries.size();
-	bindGroupLayoutDesc.entries = bindingLayoutEntries.data();
-	bindGroupLayout = device.CreateBindGroupLayout(&bindGroupLayoutDesc);
-
+	
 	// Create the pipeline layout
 	wgpu::PipelineLayoutDescriptor layoutDesc{};
 	layoutDesc.bindGroupLayoutCount = 1;
@@ -392,7 +435,7 @@ bool initUniforms(wgpu::Device device)
 bool initBindGroup(wgpu::Device device) 
 {
 	// Create a binding
-	std::vector<wgpu::BindGroupEntry> bindings(3);
+	std::vector<wgpu::BindGroupEntry> bindings(4);
 
 	// The index of the binding (the entries in bindGroupDesc can be in any order)
 	bindings[0].binding = 0;
@@ -408,6 +451,11 @@ bool initBindGroup(wgpu::Device device)
 
 	bindings[2].binding = 2;
 	bindings[2].sampler = sampler2;
+
+	bindings[3].binding = 3;
+	bindings[3].buffer = m_lightingUniformBuffer;
+	bindings[3].offset = 0;
+	bindings[3].size = sizeof(LightingUniforms);
 
 	// A bind group contains one or multiple bindings
 	wgpu::BindGroupDescriptor bindGroupDesc{};
@@ -449,33 +497,41 @@ void updateGui(wgpu::RenderPassEncoder renderPass)
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	// [...] Build our UI
+	//// [...] Build our UI
 
-	// Build our UI
-	static float f = 0.0f;
-	static int counter = 0;
-	static bool show_demo_window = true;
-	static bool show_another_window = false;
-	static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+	//// Build our UI
+	//static float f = 0.0f;
+	//static int counter = 0;
+	//static bool show_demo_window = true;
+	//static bool show_another_window = false;
+	//static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-	ImGui::Begin("Hello, world!");                                // Create a window called "Hello, world!" and append into it.
+	//ImGui::Begin("Hello, world!");                                // Create a window called "Hello, world!" and append into it.
 
-	ImGui::Text("This is some useful text.");                     // Display some text (you can use a format strings too)
-	ImGui::Checkbox("Demo Window", &show_demo_window);            // Edit bools storing our window open/close state
-	ImGui::Checkbox("Another Window", &show_another_window);
+	//ImGui::Text("This is some useful text.");                     // Display some text (you can use a format strings too)
+	//ImGui::Checkbox("Demo Window", &show_demo_window);            // Edit bools storing our window open/close state
+	//ImGui::Checkbox("Another Window", &show_another_window);
 
-	ImGui::SliderFloat("float", &f, 0.0f, 1.0f);                  // Edit 1 float using a slider from 0.0f to 1.0f
-	ImGui::ColorEdit3("clear color", (float*)&clear_color);       // Edit 3 floats representing a color
+	//ImGui::SliderFloat("float", &f, 0.0f, 1.0f);                  // Edit 1 float using a slider from 0.0f to 1.0f
+	//ImGui::ColorEdit3("clear color", (float*)&clear_color);       // Edit 3 floats representing a color
 
-	if (ImGui::Button("Button"))                                  // Buttons return true when clicked (most widgets return true when edited/activated)
-		counter++;
-	ImGui::SameLine();
-	ImGui::Text("counter = %d", counter);
+	//if (ImGui::Button("Button"))                                  // Buttons return true when clicked (most widgets return true when edited/activated)
+	//	counter++;
+	//ImGui::SameLine();
+	//ImGui::Text("counter = %d", counter);
 
-	ImGuiIO& io = ImGui::GetIO();
-	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+	//ImGuiIO& io = ImGui::GetIO();
+	//ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+	//ImGui::End();
+
+	bool changed = false;
+	ImGui::Begin("Lighting");
+	changed = ImGui::ColorEdit3("Color #0", glm::value_ptr(m_lightingUniforms.colors[0])) || changed;
+	changed = ImGui::DragDirection("Direction #0", m_lightingUniforms.directions[0]) || changed;
+	changed = ImGui::ColorEdit3("Color #1", glm::value_ptr(m_lightingUniforms.colors[1])) || changed;
+	changed = ImGui::DragDirection("Direction #1", m_lightingUniforms.directions[1]) || changed;
 	ImGui::End();
-
+	m_lightingUniformsChanged = changed;
 
 	// Draw the UI
 	ImGui::EndFrame();
@@ -484,6 +540,41 @@ void updateGui(wgpu::RenderPassEncoder renderPass)
 	// Execute the low-level drawing commands on the WebGPU backend
 	ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPass.Get());
 }
+
+void updateLightingUniforms(wgpu::Device device)
+{
+	if (m_lightingUniformsChanged) 
+	{
+		device.GetQueue().WriteBuffer(m_lightingUniformBuffer, 0, &m_lightingUniforms, sizeof(LightingUniforms));
+		m_lightingUniformsChanged = false;
+	}
+}
+bool initLightingUniforms(wgpu::Device device)
+{
+	// Create uniform buffer
+	wgpu::BufferDescriptor bufferDesc;
+	bufferDesc.size = sizeof(LightingUniforms);
+	bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform;
+	bufferDesc.mappedAtCreation = false;
+	m_lightingUniformBuffer = device.CreateBuffer(&bufferDesc);
+
+	// Initial values
+	m_lightingUniforms.directions[0] = { 0.5f, -0.9f, 0.1f, 0.0f };
+	m_lightingUniforms.directions[1] = { 0.2f, 0.4f, 0.3f, 0.0f };
+	m_lightingUniforms.colors[0] = { 1.0f, 0.9f, 0.6f, 1.0f };
+	m_lightingUniforms.colors[1] = { 0.6f, 0.9f, 1.0f, 1.0f };
+
+	updateLightingUniforms(device);
+
+	return m_lightingUniformBuffer != nullptr;
+}
+
+void terminateLightingUniforms() 
+{
+	m_lightingUniformBuffer.Destroy();
+	m_lightingUniformBuffer = nullptr;
+}
+
 
 
 void initTextures(wgpu::Device device, wgpu::Queue queue)
@@ -549,6 +640,8 @@ bool Render::Create(void* glfwWindow)
 	if (!initDepthBuffer(kWidth, kHeight))
 		return false;
 
+	if (!initBindGroupLayout(m_data->device))
+		return false;
 	if (!initRenderPipeline(m_data->device, m_data->swapChainFormat, m_data->depthTextureFormat))
 		return false;
 	if (!initTexture(m_data->device))
@@ -557,9 +650,10 @@ bool Render::Create(void* glfwWindow)
 		return false;
 	if (!initUniforms(m_data->device))
 		return false;
+	if (!initLightingUniforms(m_data->device))
+		return false;
 	if (!initBindGroup(m_data->device))
 		return false;
-
 	if (!initGui((GLFWwindow*)glfwWindow, m_data->device, m_data->swapChainFormat, m_data->depthTextureFormat))
 		return false;
 
@@ -568,6 +662,7 @@ bool Render::Create(void* glfwWindow)
 //-----------------------------------------------------------------------------
 void Render::Destroy()
 {
+	terminateLightingUniforms();
 	terminateGui();
 	terminateDepthBuffer();
 	terminateSwapChain();
@@ -579,6 +674,8 @@ void Render::Frame()
 {
 	if (updateDragInertia())
 		updateViewMatrix();
+
+	updateLightingUniforms(m_data->device);
 
 	{
 		// Update uniform buffer
