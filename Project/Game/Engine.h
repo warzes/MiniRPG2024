@@ -101,6 +101,10 @@ public:
 	}
 
 	void OnResize();
+	// Mouse events
+	void OnMouseMove(double xpos, double ypos);
+	void OnMouseButton(int button, int action, int mods);
+	void OnScroll(double xoffset, double yoffset);
 
 private:
 	void run(std::unique_ptr<IApp> app);
@@ -109,8 +113,6 @@ private:
 	bool isRun() const;
 
 	void exit();
-
-
 
 	std::unique_ptr<IApp> m_app;
 	EngineData* m_data = nullptr;

@@ -50,6 +50,56 @@ wgpu::TextureView textureView;
 wgpu::Sampler sampler2;
 wgpu::BindGroupLayout bindGroupLayout;
 
+struct CameraState {
+	// angles.x is the rotation of the camera around the global vertical axis, affected by mouse.x
+	// angles.y is the rotation of the camera around its local horizontal axis, affected by mouse.y
+	glm::vec2 angles = { 0.8f, 0.5f };
+	// zoom is the position of the camera along its local forward axis, affected by the scroll wheel
+	float zoom = -1.2f;
+};
+
+struct DragState {
+	// Whether a drag action is ongoing (i.e., we are between mouse press and mouse release)
+	bool active = false;
+	// The position of the mouse at the beginning of the drag action
+	glm::vec2 startMouse;
+	// The camera state at the beginning of the drag action
+	CameraState startCameraState;
+
+	// Constant settings
+	float sensitivity = 0.01f;
+	float scrollSensitivity = 0.1f;
+
+	// Inertia
+	glm::vec2 velocity = { 0.0, 0.0 };
+	glm::vec2 previousDelta;
+	float intertia = 0.9f;
+};
+
+CameraState m_cameraState;
+DragState m_drag;
+
+bool updateDragInertia()
+{
+	constexpr float eps = 1e-4f;
+	// Apply inertia only when the user released the click.
+	if (!m_drag.active)
+	{
+		// Avoid updating the matrix when the velocity is no longer noticeable
+		if (std::abs(m_drag.velocity.x) < eps && std::abs(m_drag.velocity.y) < eps)
+			return false;
+
+		m_cameraState.angles += m_drag.velocity;
+		m_cameraState.angles.y = glm::clamp(m_cameraState.angles.y, -3.14f / 2 + 1e-5f, 3.14f / 2 - 1e-5f);
+		// Dampen the velocity so that it decreases exponentially and stops
+		// after a few frames.
+		m_drag.velocity *= m_drag.intertia;
+		return true;
+	}
+	return false;
+}
+
+
 bool initRenderPipeline(wgpu::Device device, wgpu::TextureFormat swapChainFormat, wgpu::TextureFormat depthTextureFormat)
 {
 	const char* shaderText = R"(
@@ -447,6 +497,9 @@ void Render::Destroy()
 //-----------------------------------------------------------------------------
 void Render::Frame()
 {
+	if (updateDragInertia())
+		updateViewMatrix();
+
 	{
 		// Update uniform buffer
 		uniforms.time = static_cast<float>(glfwGetTime());
@@ -650,12 +703,51 @@ bool Render::Resize(int width, int height)
 	if (!initSwapChain(width, height)) return false;
 	if (!initDepthBuffer(width, height)) return false;
 
-	// Update projection matrix
-	float ratio = width / (float)height;
-	uniforms.projectionMatrix = glm::perspective(45 * 3.14f / 180, ratio, 0.01f, 100.0f);
-	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, projectionMatrix), &uniforms.projectionMatrix, sizeof(MyUniforms::projectionMatrix));
+	updateProjectionMatrix(width, height);
 
 	return true;
+}
+//-----------------------------------------------------------------------------
+void Render::OnMouseMove(double xpos, double ypos)
+{
+	if (m_drag.active)
+	{
+		glm::vec2 currentMouse = glm::vec2(-(float)xpos, (float)ypos);
+		glm::vec2 delta = (currentMouse - m_drag.startMouse) * m_drag.sensitivity;
+		m_cameraState.angles = m_drag.startCameraState.angles + delta;
+		// Clamp to avoid going too far when orbitting up/down
+		m_cameraState.angles.y = glm::clamp(m_cameraState.angles.y, -3.14f / 2 + 1e-5f, 3.14f / 2 - 1e-5f);
+		updateViewMatrix();
+
+		// Inertia
+		m_drag.velocity = delta - m_drag.previousDelta;
+		m_drag.previousDelta = delta;
+	}
+}
+//-----------------------------------------------------------------------------
+void Render::OnMouseButton(int button, int action, int mods, double xpos, double ypos)
+{
+	if (button == GLFW_MOUSE_BUTTON_LEFT)
+	{
+		switch (action)
+		{
+		case GLFW_PRESS:
+			m_drag.active = true;
+			m_drag.startMouse = glm::vec2(-(float)xpos, (float)ypos);
+			m_drag.startCameraState = m_cameraState;
+			break;
+		case GLFW_RELEASE:
+			m_drag.active = false;
+			break;
+		}
+	}
+}
+//-----------------------------------------------------------------------------
+void Render::OnScroll(double xoffset, double yoffset)
+{
+	m_cameraState.zoom += m_drag.scrollSensitivity * static_cast<float>(yoffset);
+	m_cameraState.zoom = glm::clamp(m_cameraState.zoom, -2.0f, 2.0f);
+	updateViewMatrix();
 }
 //-----------------------------------------------------------------------------
 bool Render::initSwapChain(int width, int height)
@@ -709,5 +801,29 @@ void Render::terminateDepthBuffer()
 	if (m_data->depthTexture) m_data->depthTexture.Destroy();
 	m_data->depthTexture = nullptr;
 	m_data->depthTextureView = nullptr;
+}
+//-----------------------------------------------------------------------------
+void Render::updateProjectionMatrix(int width, int height)
+{
+	// Update projection matrix
+	float ratio = width / (float)height;
+	uniforms.projectionMatrix = glm::perspective(45 * 3.14f / 180, ratio, 0.01f, 100.0f);
+	m_data->queue.WriteBuffer(uniformBuffer, offsetof(MyUniforms, projectionMatrix), &uniforms.projectionMatrix, sizeof(MyUniforms::projectionMatrix));
+}
+//-----------------------------------------------------------------------------
+void Render::updateViewMatrix()
+{
+	float cx = cos(m_cameraState.angles.x);
+	float sx = sin(m_cameraState.angles.x);
+	float cy = cos(m_cameraState.angles.y);
+	float sy = sin(m_cameraState.angles.y);
+	glm::vec3 position = glm::vec3(cx * cy, sx * cy, sy) * std::exp(-m_cameraState.zoom);
+	uniforms.viewMatrix = glm::lookAt(position, glm::vec3(0.0f), glm::vec3(0, 0, 1));
+	m_data->queue.WriteBuffer(
+		uniformBuffer,
+		offsetof(MyUniforms, viewMatrix),
+		&uniforms.viewMatrix,
+		sizeof(MyUniforms::viewMatrix)
+	);
 }
 //-----------------------------------------------------------------------------

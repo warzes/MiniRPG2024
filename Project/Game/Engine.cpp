@@ -36,6 +36,24 @@ void onWindowResize(GLFWwindow* window, int /* width */, int /* height */) noexc
 	if (that != nullptr) that->OnResize();
 }
 //-----------------------------------------------------------------------------
+void onMouseMove(GLFWwindow* window, double xpos, double ypos) noexcept
+{
+	auto that = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
+	if (that != nullptr) that->OnMouseMove(xpos, ypos);
+}
+//-----------------------------------------------------------------------------
+void onMouseButton(GLFWwindow* window, int button, int action, int mods) noexcept
+{
+	auto that = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
+	if (that != nullptr) that->OnMouseButton(button, action, mods);
+}
+//-----------------------------------------------------------------------------
+void onScroll(GLFWwindow* window, double xoffset, double yoffset) noexcept
+{
+	auto that = reinterpret_cast<Engine*>(glfwGetWindowUserPointer(window));
+	if (that != nullptr) that->OnScroll(xoffset, yoffset);
+}
+//-----------------------------------------------------------------------------
 struct EngineData
 {
 	GLFWwindow* window = nullptr;
@@ -104,6 +122,10 @@ bool Engine::init()
 
 	glfwSetWindowUserPointer(m_data->window, this);
 	glfwSetFramebufferSizeCallback(m_data->window, onWindowResize);
+	glfwSetCursorPosCallback(m_data->window, onMouseMove);
+	glfwSetMouseButtonCallback(m_data->window, onMouseButton);
+	glfwSetScrollCallback(m_data->window, onScroll);
+
 
 	if (!m_render.Create((void*)m_data->window))
 	{
@@ -140,5 +162,22 @@ void Engine::OnResize()
 	
 	if (!m_render.Resize(WindowWidth, WindowHeight))
 		Fatal("render resize error");
+}
+//-----------------------------------------------------------------------------
+void Engine::OnMouseMove(double xpos, double ypos)
+{
+	m_render.OnMouseMove(xpos, ypos);
+}
+//-----------------------------------------------------------------------------
+void Engine::OnMouseButton(int button, int action, int mods)
+{
+	double xpos, ypos;
+	glfwGetCursorPos(m_data->window, &xpos, &ypos);
+	m_render.OnMouseButton(button, action, mods, xpos, ypos);
+}
+//-----------------------------------------------------------------------------
+void Engine::OnScroll(double xoffset, double yoffset)
+{
+	m_render.OnScroll(xoffset, yoffset);
 }
 //-----------------------------------------------------------------------------
