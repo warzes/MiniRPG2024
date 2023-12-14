@@ -47,6 +47,9 @@
     <ClCompile Include="..\3rdparty\imgui\imgui_impl_wgpu.cpp">
       <Filter>Engine\3rdparty\imgui</Filter>
     </ClCompile>
+    <ClCompile Include="TestRenderNormal.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">

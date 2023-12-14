@@ -1,8 +1,5 @@
 ﻿#include "Engine.h"
 
-тинирендерен
-https://www.scratchapixel.com/index.html
-
 #include <Dawn/webgpu.h>
 #include <dawn/webgpu_cpp.h>
 #include <Dawn/native/DawnNative.h>
@@ -43,12 +40,13 @@ wgpu::Buffer indexBuffer2;
 wgpu::BindGroup bindGroup2;
 
 struct MyUniforms {
+	// We add transform matrices
 	glm::mat4x4 projectionMatrix;
 	glm::mat4x4 viewMatrix;
 	glm::mat4x4 modelMatrix;
-	std::array<float, 4> color;
+	glm::vec4 color;
+	glm::vec3 cameraWorldPosition;
 	float time;
-	float _pad[3];
 };
 static_assert(sizeof(MyUniforms) % 16 == 0);
 
@@ -56,6 +54,13 @@ struct LightingUniforms
 {
 	std::array<glm::vec4, 2> directions;
 	std::array<glm::vec4, 2> colors;
+
+	// Material properties
+	float hardness = 32.0f;
+	float kd = 1.0f;
+	float ks = 0.5f;
+
+	float _pad[1];
 };
 static_assert(sizeof(LightingUniforms) % 16 == 0);
 
@@ -72,8 +77,11 @@ glm::mat4x4 R1;
 glm::mat4x4 T1;
 glm::mat4x4 S;
 
-wgpu::Texture texture2;
-wgpu::TextureView textureView;
+wgpu::Texture m_baseColorTexture;
+wgpu::TextureView m_baseColorTextureView;
+wgpu::Texture m_normalTexture;
+wgpu::TextureView m_normalTextureView;
+
 wgpu::Sampler sampler2;
 wgpu::BindGroupLayout bindGroupLayout;
 
@@ -130,32 +138,38 @@ bool updateDragInertia()
 
 bool initBindGroupLayout(wgpu::Device device)
 {
-	// Since we now have 2 bindings, we use a vector to store them
-	std::vector<wgpu::BindGroupLayoutEntry> bindingLayoutEntries(4);
+	std::vector<wgpu::BindGroupLayoutEntry> bindingLayoutEntries(5);
 
+	// The uniform buffer binding
 	wgpu::BindGroupLayoutEntry& bindingLayout = bindingLayoutEntries[0];
-	// The binding index as used in the @binding attribute in the shader
 	bindingLayout.binding = 0;
-	// The stage that needs to access this resource
 	bindingLayout.visibility = wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment;
 	bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
 	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
 
+	// The base color texture binding
 	wgpu::BindGroupLayoutEntry& textureBindingLayout = bindingLayoutEntries[1];
-	// Setup texture binding
 	textureBindingLayout.binding = 1;
 	textureBindingLayout.visibility = wgpu::ShaderStage::Fragment;
 	textureBindingLayout.texture.sampleType = wgpu::TextureSampleType::Float;
 	textureBindingLayout.texture.viewDimension = wgpu::TextureViewDimension::e2D;
 
+	// The normal map binding
+	wgpu::BindGroupLayoutEntry& normalTextureBindingLayout = bindingLayoutEntries[2];
+	normalTextureBindingLayout.binding = 2;
+	normalTextureBindingLayout.visibility = wgpu::ShaderStage::Fragment;
+	normalTextureBindingLayout.texture.sampleType = wgpu::TextureSampleType::Float;
+	normalTextureBindingLayout.texture.viewDimension = wgpu::TextureViewDimension::e2D;
+
 	// The texture sampler binding
-	wgpu::BindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
-	samplerBindingLayout.binding = 2;
+	wgpu::BindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[3];
+	samplerBindingLayout.binding = 3;
 	samplerBindingLayout.visibility = wgpu::ShaderStage::Fragment;
 	samplerBindingLayout.sampler.type = wgpu::SamplerBindingType::Filtering;
 
-	wgpu::BindGroupLayoutEntry& lightingUniformLayout = bindingLayoutEntries[3];
-	lightingUniformLayout.binding = 3;
+	// The lighting uniform buffer binding
+	wgpu::BindGroupLayoutEntry& lightingUniformLayout = bindingLayoutEntries[4];
+	lightingUniformLayout.binding = 4;
 	lightingUniformLayout.visibility = wgpu::ShaderStage::Fragment;
 	lightingUniformLayout.buffer.type = wgpu::BufferBindingType::Uniform;
 	lightingUniformLayout.buffer.minBindingSize = sizeof(LightingUniforms);
@@ -177,12 +191,16 @@ struct MyUniforms {
 	viewMatrix: mat4x4f,
 	modelMatrix: mat4x4f,
 	color: vec4f,
+	cameraWorldPosition: vec3f,
 	time: f32,
 };
 
 struct LightingUniforms {
 	directions: array<vec4f, 2>,
 	colors: array<vec4f, 2>,
+	hardness: f32,
+	kd: f32,
+	ks: f32,
 }
 
 struct VertexInput {
@@ -190,6 +208,8 @@ struct VertexInput {
 	@location(1) normal: vec3f,
 	@location(2) color: vec3f,
 	@location(3) uv: vec2f,
+	@location(4) tangent: vec3f,
+	@location(5) bitangent: vec3f,
 };
 
 struct VertexOutput {
@@ -197,50 +217,104 @@ struct VertexOutput {
 	@location(0) color: vec3f,
 	@location(1) normal: vec3f,
 	@location(2) uv: vec2f,
+	@location(3) viewDirection: vec3<f32>,
+	@location(4) tangent: vec3f,
+	@location(5) bitangent: vec3f,
 };
 
 @group(0) @binding(0) var<uniform> uMyUniforms: MyUniforms;
 @group(0) @binding(1) var baseColorTexture: texture_2d<f32>;
-@group(0) @binding(2) var textureSampler: sampler;
-@group(0) @binding(3) var<uniform> uLighting: LightingUniforms;
+@group(0) @binding(2) var normalTexture: texture_2d<f32>;
+@group(0) @binding(3) var textureSampler: sampler;
+@group(0) @binding(4) var<uniform> uLighting: LightingUniforms;
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput
 {
 	var out: VertexOutput;
-	out.position = uMyUniforms.projectionMatrix * uMyUniforms.viewMatrix * uMyUniforms.modelMatrix * vec4f(in.position, 1.0);
-	out.color = in.color;
+	let worldPosition = uMyUniforms.modelMatrix * vec4<f32>(in.position, 1.0);
+	out.position = uMyUniforms.projectionMatrix * uMyUniforms.viewMatrix * worldPosition;
+	out.tangent = (uMyUniforms.modelMatrix * vec4f(in.tangent, 0.0)).xyz;
+	out.bitangent = (uMyUniforms.modelMatrix * vec4f(in.bitangent, 0.0)).xyz;
 	out.normal = (uMyUniforms.modelMatrix * vec4f(in.normal, 0.0)).xyz;
+	out.color = in.color;
 	out.uv = in.uv;
+	out.viewDirection = uMyUniforms.cameraWorldPosition - worldPosition.xyz;
 	return out;
 }
 
 @fragment
+//fn fs_main(in: VertexOutput) -> @location(0) vec4f
+//{
+//	// Compute shading
+//	let normal = normalize(in.normal);
+//	//let lightDirection1 = vec3f(0.5, -0.9, 0.1);
+//	//let lightDirection2 = vec3f(0.2, 0.4, 0.3);
+//	//let lightColor1 = vec3f(1.0, 0.9, 0.6);
+//	//let lightColor2 = vec3f(0.6, 0.9, 1.0);
+//	//let shading1 = max(0.0, dot(lightDirection1, normal));
+//	//let shading2 = max(0.0, dot(lightDirection2, normal));
+//	//let shading = shading1 * lightColor1 + shading2 * lightColor2;
+//
+//	var shading = vec3f(0.0);
+//	for (var i: i32 = 0; i < 2; i++) {
+//		let direction = normalize(uLighting.directions[i].xyz);
+//		let color = uLighting.colors[i].rgb;
+//		shading += max(0.0, dot(direction, normal)) * color;
+//	}
+//
+//	// Sample texture
+//	let baseColor = textureSample(baseColorTexture, textureSampler, in.uv).rgb;
+//	
+//	// Combine texture and lighting
+//	let color = baseColor * shading;
+//
+//	// Gamma-correction
+//	let corrected_color = pow(color, vec3f(2.2));
+//	return vec4f(corrected_color, uMyUniforms.color.a);
+//}
+
 fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
-	// Compute shading
-	let normal = normalize(in.normal);
-	//let lightDirection1 = vec3f(0.5, -0.9, 0.1);
-	//let lightDirection2 = vec3f(0.2, 0.4, 0.3);
-	//let lightColor1 = vec3f(1.0, 0.9, 0.6);
-	//let lightColor2 = vec3f(0.6, 0.9, 1.0);
-	//let shading1 = max(0.0, dot(lightDirection1, normal));
-	//let shading2 = max(0.0, dot(lightDirection2, normal));
-	//let shading = shading1 * lightColor1 + shading2 * lightColor2;
+	// Sample normal
+	let normalMapStrength = 1.0; // could be a uniform
+	let encodedN = textureSample(normalTexture, textureSampler, in.uv).rgb;
+	let localN = encodedN * 2.0 - 1.0;
+	// The TBN matrix converts directions from the local space to the world space
+	let localToWorld = mat3x3f(
+		normalize(in.tangent),
+		normalize(in.bitangent),
+		normalize(in.normal),
+	);
+	let worldN = localToWorld * localN;
+	let N = normalize(mix(in.normal, worldN, normalMapStrength));
 
-	var shading = vec3f(0.0);
-	for (var i: i32 = 0; i < 2; i++) {
-		let direction = normalize(uLighting.directions[i].xyz);
-		let color = uLighting.colors[i].rgb;
-		shading += max(0.0, dot(direction, normal)) * color;
-	}
+	let V = normalize(in.viewDirection);
 
 	// Sample texture
 	let baseColor = textureSample(baseColorTexture, textureSampler, in.uv).rgb;
-	
-	// Combine texture and lighting
-	let color = baseColor * shading;
+	let kd = uLighting.kd;
+	let ks = uLighting.ks;
+	let hardness = uLighting.hardness;
 
+	// Compute shading
+	var color = vec3f(0.0);
+	for (var i: i32 = 0; i < 2; i++) {
+		let lightColor = uLighting.colors[i].rgb;
+		let L = normalize(uLighting.directions[i].xyz);
+		let R = reflect(-L, N); // equivalent to 2.0 * dot(N, L) * N - L
+
+		let diffuse = max(0.0, dot(L, N)) * lightColor;
+
+		// We clamp the dot product to 0 when it is negative
+		let RoV = max(0.0, dot(R, V));
+		let specular = pow(RoV, hardness);
+
+		color += baseColor * kd * diffuse + ks * specular;
+	}
+
+	//color = N * 0.5 + 0.5;
+	
 	// Gamma-correction
 	let corrected_color = pow(color, vec3f(2.2));
 	return vec4f(corrected_color, uMyUniforms.color.a);
@@ -249,7 +323,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	wgpu::ShaderModule shaderModule = CreateShaderModule(device, shaderText);
 
 	// Vertex fetch
-	std::vector<wgpu::VertexAttribute> vertexAttribs(4);
+	std::vector<wgpu::VertexAttribute> vertexAttribs(6);
 	// Position attribute
 	vertexAttribs[0].shaderLocation = 0;
 	vertexAttribs[0].format = wgpu::VertexFormat::Float32x3;
@@ -266,6 +340,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f
 	vertexAttribs[3].shaderLocation = 3;
 	vertexAttribs[3].format = wgpu::VertexFormat::Float32x2;
 	vertexAttribs[3].offset = offsetof(VertexAttributes, uv);
+
+	// Tangent attribute
+	vertexAttribs[4].shaderLocation = 4;
+	vertexAttribs[4].format = wgpu::VertexFormat::Float32x3;
+	vertexAttribs[4].offset = offsetof(VertexAttributes, tangent);
+
+	// Bitangent attribute
+	vertexAttribs[5].shaderLocation = 5;
+	vertexAttribs[5].format = wgpu::VertexFormat::Float32x3;
+	vertexAttribs[5].offset = offsetof(VertexAttributes, bitangent);
 
 	wgpu::VertexBufferLayout vertexBufferLayout{};
 	vertexBufferLayout.attributeCount = static_cast<uint32_t>(vertexAttribs.size());
@@ -398,9 +482,10 @@ bool initTexture(wgpu::Device device)
 	//textureViewDesc.format = textureDesc.format;
 	//textureView = texture2.CreateView(&textureViewDesc);
 
-	texture2 = LoadTexture(device, "../Data/Models/fourareen2K_albedo.jpg", &textureView);
+	m_baseColorTexture = LoadTexture(device, "../Data/Models/fourareen2K_albedo.jpg", &m_baseColorTextureView);
+	m_normalTexture = LoadTexture(device, "../Data/Models/fourareen2K_normals.png", &m_normalTextureView);
 
-	return textureView != nullptr;
+	return m_baseColorTextureView != nullptr && m_normalTextureView != nullptr;
 }
 
 bool initGeometry(wgpu::Device device)
@@ -435,32 +520,29 @@ bool initUniforms(wgpu::Device device)
 bool initBindGroup(wgpu::Device device) 
 {
 	// Create a binding
-	std::vector<wgpu::BindGroupEntry> bindings(4);
+	std::vector<wgpu::BindGroupEntry> bindings(5);
 
-	// The index of the binding (the entries in bindGroupDesc can be in any order)
 	bindings[0].binding = 0;
-	// The buffer it is actually bound to
 	bindings[0].buffer = uniformBuffer;
-	// We can specify an offset within the buffer, so that a single buffer can hold multiple uniform blocks.
 	bindings[0].offset = 0;
-	// And we specify again the size of the buffer.
 	bindings[0].size = sizeof(MyUniforms);
 
 	bindings[1].binding = 1;
-	bindings[1].textureView = textureView;
+	bindings[1].textureView = m_baseColorTextureView;
 
 	bindings[2].binding = 2;
-	bindings[2].sampler = sampler2;
+	bindings[2].textureView = m_normalTextureView;
 
 	bindings[3].binding = 3;
-	bindings[3].buffer = m_lightingUniformBuffer;
-	bindings[3].offset = 0;
-	bindings[3].size = sizeof(LightingUniforms);
+	bindings[3].sampler = sampler2;
 
-	// A bind group contains one or multiple bindings
+	bindings[4].binding = 4;
+	bindings[4].buffer = m_lightingUniformBuffer;
+	bindings[4].offset = 0;
+	bindings[4].size = sizeof(LightingUniforms);
+
 	wgpu::BindGroupDescriptor bindGroupDesc{};
 	bindGroupDesc.layout = bindGroupLayout;
-	// There must be as many bindings as declared in the layout!
 	bindGroupDesc.entryCount = (uint32_t)bindings.size();
 	bindGroupDesc.entries = bindings.data();
 	bindGroup2 = device.CreateBindGroup(&bindGroupDesc);
@@ -497,41 +579,20 @@ void updateGui(wgpu::RenderPassEncoder renderPass)
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	//// [...] Build our UI
-
-	//// Build our UI
-	//static float f = 0.0f;
-	//static int counter = 0;
-	//static bool show_demo_window = true;
-	//static bool show_another_window = false;
-	//static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-
-	//ImGui::Begin("Hello, world!");                                // Create a window called "Hello, world!" and append into it.
-
-	//ImGui::Text("This is some useful text.");                     // Display some text (you can use a format strings too)
-	//ImGui::Checkbox("Demo Window", &show_demo_window);            // Edit bools storing our window open/close state
-	//ImGui::Checkbox("Another Window", &show_another_window);
-
-	//ImGui::SliderFloat("float", &f, 0.0f, 1.0f);                  // Edit 1 float using a slider from 0.0f to 1.0f
-	//ImGui::ColorEdit3("clear color", (float*)&clear_color);       // Edit 3 floats representing a color
-
-	//if (ImGui::Button("Button"))                                  // Buttons return true when clicked (most widgets return true when edited/activated)
-	//	counter++;
-	//ImGui::SameLine();
-	//ImGui::Text("counter = %d", counter);
-
-	//ImGuiIO& io = ImGui::GetIO();
-	//ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-	//ImGui::End();
-
-	bool changed = false;
-	ImGui::Begin("Lighting");
-	changed = ImGui::ColorEdit3("Color #0", glm::value_ptr(m_lightingUniforms.colors[0])) || changed;
-	changed = ImGui::DragDirection("Direction #0", m_lightingUniforms.directions[0]) || changed;
-	changed = ImGui::ColorEdit3("Color #1", glm::value_ptr(m_lightingUniforms.colors[1])) || changed;
-	changed = ImGui::DragDirection("Direction #1", m_lightingUniforms.directions[1]) || changed;
-	ImGui::End();
-	m_lightingUniformsChanged = changed;
+	// Build our UI
+	{
+		bool changed = false;
+		ImGui::Begin("Lighting");
+		changed = ImGui::ColorEdit3("Color #0", glm::value_ptr(m_lightingUniforms.colors[0])) || changed;
+		changed = ImGui::DragDirection("Direction #0", m_lightingUniforms.directions[0]) || changed;
+		changed = ImGui::ColorEdit3("Color #1", glm::value_ptr(m_lightingUniforms.colors[1])) || changed;
+		changed = ImGui::DragDirection("Direction #1", m_lightingUniforms.directions[1]) || changed;
+		changed = ImGui::SliderFloat("Hardness", &m_lightingUniforms.hardness, 1.0f, 100.0f) || changed;
+		changed = ImGui::SliderFloat("K Diffuse", &m_lightingUniforms.kd, 0.0f, 1.0f) || changed;
+		changed = ImGui::SliderFloat("K Specular", &m_lightingUniforms.ks, 0.0f, 1.0f) || changed;
+		ImGui::End();
+		m_lightingUniformsChanged = changed;
+	}
 
 	// Draw the UI
 	ImGui::EndFrame();
@@ -574,8 +635,6 @@ void terminateLightingUniforms()
 	m_lightingUniformBuffer.Destroy();
 	m_lightingUniformBuffer = nullptr;
 }
-
-
 
 void initTextures(wgpu::Device device, wgpu::Queue queue)
 {
@@ -650,6 +709,8 @@ bool Render::Create(void* glfwWindow)
 		return false;
 	if (!initUniforms(m_data->device))
 		return false;
+	updateProjectionMatrix(kWidth, kHeight);
+	updateViewMatrix();
 	if (!initLightingUniforms(m_data->device))
 		return false;
 	if (!initBindGroup(m_data->device))
@@ -910,8 +971,7 @@ void Render::OnMouseButton(int button, int action, int mods, double xpos, double
 	ImGuiIO& io = ImGui::GetIO();
 	if (io.WantCaptureMouse)
 	{
-		// Don't rotate the camera if the mouse is already captured by an ImGui
-		// interaction at this frame.
+		// Don't rotate the camera if the mouse is already captured by an ImGui interaction at this frame.
 		return;
 	}
 
@@ -1005,6 +1065,7 @@ void Render::updateViewMatrix()
 	float sx = sin(m_cameraState.angles.x);
 	float cy = cos(m_cameraState.angles.y);
 	float sy = sin(m_cameraState.angles.y);
+
 	glm::vec3 position = glm::vec3(cx * cy, sx * cy, sy) * std::exp(-m_cameraState.zoom);
 	uniforms.viewMatrix = glm::lookAt(position, glm::vec3(0.0f), glm::vec3(0, 0, 1));
 	m_data->queue.WriteBuffer(
@@ -1012,6 +1073,13 @@ void Render::updateViewMatrix()
 		offsetof(MyUniforms, viewMatrix),
 		&uniforms.viewMatrix,
 		sizeof(MyUniforms::viewMatrix)
+	);
+	uniforms.cameraWorldPosition = position;
+	m_data->queue.WriteBuffer(
+		uniformBuffer,
+		offsetof(MyUniforms, cameraWorldPosition),
+		&uniforms.cameraWorldPosition,
+		sizeof(MyUniforms::cameraWorldPosition)
 	);
 }
 //-----------------------------------------------------------------------------
