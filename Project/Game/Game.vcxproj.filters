@@ -26,6 +26,27 @@
     <ClCompile Include="..\3rdparty\tiny_obj_loader.cpp">
       <Filter>Engine\3rdparty</Filter>
     </ClCompile>
+    <ClCompile Include="..\3rdparty\imgui\imgui_stdlib.cpp">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\imgui\imgui_tables.cpp">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\imgui\imgui_widgets.cpp">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\imgui\imgui.cpp">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\imgui\imgui_draw.cpp">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\imgui\imgui_impl_glfw.cpp">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="..\3rdparty\imgui\imgui_impl_wgpu.cpp">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">
@@ -72,6 +93,9 @@
     </Filter>
     <Filter Include="Test">
       <UniqueIdentifier>{d6317154-a0e7-4f57-bb0d-0fe9d7a887f1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\3rdparty\imgui">
+      <UniqueIdentifier>{87efeede-36c0-4037-b8d3-699bf0f3fc26}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -977,6 +1001,33 @@
     </ClInclude>
     <ClInclude Include="RenderModel.h">
       <Filter>Engine\Private</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imgui_stdlib.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imstb_rectpack.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imstb_textedit.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imstb_truetype.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imconfig.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imgui.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imgui_impl_glfw.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imgui_impl_wgpu.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3rdparty\imgui\imgui_internal.h">
+      <Filter>Engine\3rdparty\imgui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

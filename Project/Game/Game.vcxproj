@@ -93,6 +93,13 @@
   <ItemGroup>
     <ClCompile Include="..\3rdparty\DawnLib.cpp" />
     <ClCompile Include="..\3rdparty\glfw.c" />
+    <ClCompile Include="..\3rdparty\imgui\imgui.cpp" />
+    <ClCompile Include="..\3rdparty\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\3rdparty\imgui\imgui_impl_glfw.cpp" />
+    <ClCompile Include="..\3rdparty\imgui\imgui_impl_wgpu.cpp" />
+    <ClCompile Include="..\3rdparty\imgui\imgui_stdlib.cpp" />
+    <ClCompile Include="..\3rdparty\imgui\imgui_tables.cpp" />
+    <ClCompile Include="..\3rdparty\imgui\imgui_widgets.cpp" />
     <ClCompile Include="..\3rdparty\stb.cpp" />
     <ClCompile Include="..\3rdparty\tiny_obj_loader.cpp" />
     <ClCompile Include="Core.cpp" />
@@ -391,6 +398,15 @@
     <ClInclude Include="..\3rdparty\glm\vec3.hpp" />
     <ClInclude Include="..\3rdparty\glm\vec4.hpp" />
     <ClInclude Include="..\3rdparty\glm\vector_relational.hpp" />
+    <ClInclude Include="..\3rdparty\imgui\imconfig.h" />
+    <ClInclude Include="..\3rdparty\imgui\imgui.h" />
+    <ClInclude Include="..\3rdparty\imgui\imgui_impl_glfw.h" />
+    <ClInclude Include="..\3rdparty\imgui\imgui_impl_wgpu.h" />
+    <ClInclude Include="..\3rdparty\imgui\imgui_internal.h" />
+    <ClInclude Include="..\3rdparty\imgui\imgui_stdlib.h" />
+    <ClInclude Include="..\3rdparty\imgui\imstb_rectpack.h" />
+    <ClInclude Include="..\3rdparty\imgui\imstb_textedit.h" />
+    <ClInclude Include="..\3rdparty\imgui\imstb_truetype.h" />
     <ClInclude Include="..\3rdparty\stb\stb_image.h" />
     <ClInclude Include="..\3rdparty\stb\stb_image_resize2.h" />
     <ClInclude Include="..\3rdparty\stb\stb_truetype.h" />

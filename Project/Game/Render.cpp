@@ -9,6 +9,10 @@
 #include <Dawn/dawn_proc.h>
 #include <glfw.h>
 
+#include <imgui/imgui.h>
+#include <imgui/imgui_impl_wgpu.h>
+#include <imgui/imgui_impl_glfw.h>
+
 #include "RenderUtils.h"
 #include "RenderCore.h"
 #include "RenderResources.h"
@@ -111,6 +115,11 @@ struct MyUniforms {
 	time: f32,
 };
 
+struct LightingUniforms {
+	directions: array<vec4f, 2>,
+	colors: array<vec4f, 2>,
+}
+
 struct VertexInput {
 	@location(0) position: vec3f,
 	@location(1) normal: vec3f,
@@ -126,7 +135,7 @@ struct VertexOutput {
 };
 
 @group(0) @binding(0) var<uniform> uMyUniforms: MyUniforms;
-@group(0) @binding(1) var gradientTexture: texture_2d<f32>;
+@group(0) @binding(1) var baseColorTexture: texture_2d<f32>;
 @group(0) @binding(2) var textureSampler: sampler;
 
 @vertex
@@ -143,20 +152,21 @@ fn vs_main(in: VertexInput) -> VertexOutput
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f
 {
-	//let normal = normalize(in.normal);
+	// Compute shading
+	let normal = normalize(in.normal);
+	let lightDirection1 = vec3f(0.5, -0.9, 0.1);
+	let lightDirection2 = vec3f(0.2, 0.4, 0.3);
+	let lightColor1 = vec3f(1.0, 0.9, 0.6);
+	let lightColor2 = vec3f(0.6, 0.9, 1.0);
+	let shading1 = max(0.0, dot(lightDirection1, normal));
+	let shading2 = max(0.0, dot(lightDirection2, normal));
+	let shading = shading1 * lightColor1 + shading2 * lightColor2;
 
-	//let lightColor1 = vec3f(1.0, 0.9, 0.6);
-	//let lightColor2 = vec3f(0.6, 0.9, 1.0);
-	//let lightDirection1 = vec3f(0.5, -0.9, 0.1);
-	//let lightDirection2 = vec3f(0.2, 0.4, 0.3);
-	//let shading1 = max(0.0, dot(lightDirection1, normal));
-	//let shading2 = max(0.0, dot(lightDirection2, normal));
-	//let shading = shading1 * lightColor1 + shading2 * lightColor2;
-	//let color = in.color * shading;
-
-	let texelCoords = vec2i(in.uv * vec2f(textureDimensions(gradientTexture))); // получение текстурных координат без семпла... дает олдскул пикселявочсть?
-	//let color = textureLoad(gradientTexture, texelCoords, 0).rgb;
-	let color = textureSample(gradientTexture, textureSampler, in.uv).rgb;
+	// Sample texture
+	let baseColor = textureSample(baseColorTexture, textureSampler, in.uv).rgb;
+	
+	// Combine texture and lighting
+	let color = baseColor * shading;
 
 	// Gamma-correction
 	let corrected_color = pow(color, vec3f(2.2));
@@ -410,6 +420,72 @@ bool initBindGroup(wgpu::Device device)
 	return bindGroup2 != nullptr;
 }
 
+bool initGui(GLFWwindow* window, wgpu::Device device, wgpu::TextureFormat swapChainFormat, wgpu::TextureFormat depthTextureFormat)
+{
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	auto io = ImGui::GetIO();
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+	io.IniFilename = nullptr;
+
+	// Setup Platform/Renderer backends
+	ImGui_ImplGlfw_InitForOther(window, true);
+	ImGui_ImplWGPU_Init(device.Get(), 3, (WGPUTextureFormat)swapChainFormat, (WGPUTextureFormat)depthTextureFormat);
+	return true;
+}
+
+void terminateGui()
+{
+	ImGui_ImplGlfw_Shutdown();
+	ImGui_ImplWGPU_Shutdown();
+}
+
+void updateGui(wgpu::RenderPassEncoder renderPass)
+{
+	// Start the Dear ImGui frame
+	ImGui_ImplWGPU_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+	// [...] Build our UI
+
+	// Build our UI
+	static float f = 0.0f;
+	static int counter = 0;
+	static bool show_demo_window = true;
+	static bool show_another_window = false;
+	static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+	ImGui::Begin("Hello, world!");                                // Create a window called "Hello, world!" and append into it.
+
+	ImGui::Text("This is some useful text.");                     // Display some text (you can use a format strings too)
+	ImGui::Checkbox("Demo Window", &show_demo_window);            // Edit bools storing our window open/close state
+	ImGui::Checkbox("Another Window", &show_another_window);
+
+	ImGui::SliderFloat("float", &f, 0.0f, 1.0f);                  // Edit 1 float using a slider from 0.0f to 1.0f
+	ImGui::ColorEdit3("clear color", (float*)&clear_color);       // Edit 3 floats representing a color
+
+	if (ImGui::Button("Button"))                                  // Buttons return true when clicked (most widgets return true when edited/activated)
+		counter++;
+	ImGui::SameLine();
+	ImGui::Text("counter = %d", counter);
+
+	ImGuiIO& io = ImGui::GetIO();
+	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+	ImGui::End();
+
+
+	// Draw the UI
+	ImGui::EndFrame();
+	// Convert the UI defined above into low-level drawing commands
+	ImGui::Render();
+	// Execute the low-level drawing commands on the WebGPU backend
+	ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPass.Get());
+}
+
+
 void initTextures(wgpu::Device device, wgpu::Queue queue)
 {
 	wgpu::TextureDescriptor descriptor;
@@ -484,11 +560,15 @@ bool Render::Create(void* glfwWindow)
 	if (!initBindGroup(m_data->device))
 		return false;
 
+	if (!initGui((GLFWwindow*)glfwWindow, m_data->device, m_data->swapChainFormat, m_data->depthTextureFormat))
+		return false;
+
 	return true;
 }
 //-----------------------------------------------------------------------------
 void Render::Destroy()
 {
+	terminateGui();
 	terminateDepthBuffer();
 	terminateSwapChain();
 	m_data->dawnInstance.reset();
@@ -550,6 +630,9 @@ void Render::Frame()
 		//renderPass.SetIndexBuffer(indexBuffer2, wgpu::IndexFormat::Uint16, 0/*, indexData.size() * sizeof(uint16_t)*/);
 		renderPass.SetBindGroup(0, bindGroup2, 0, nullptr);
 		renderPass.Draw(indexCount, 1, 0, 0);
+
+		updateGui(renderPass);
+
 		renderPass.End();
 	}
 
@@ -727,6 +810,14 @@ void Render::OnMouseMove(double xpos, double ypos)
 //-----------------------------------------------------------------------------
 void Render::OnMouseButton(int button, int action, int mods, double xpos, double ypos)
 {
+	ImGuiIO& io = ImGui::GetIO();
+	if (io.WantCaptureMouse)
+	{
+		// Don't rotate the camera if the mouse is already captured by an ImGui
+		// interaction at this frame.
+		return;
+	}
+
 	if (button == GLFW_MOUSE_BUTTON_LEFT)
 	{
 		switch (action)
