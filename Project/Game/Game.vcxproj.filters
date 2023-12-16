@@ -14,7 +14,7 @@
     <ClCompile Include="..\3rdparty\DawnLib.cpp">
       <Filter>Engine\3rdparty\dawn</Filter>
     </ClCompile>
-    <ClCompile Include="Render.cpp">
+    <ClCompile Include="TestRenderNormal2.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
     <ClCompile Include="Core.cpp">
@@ -48,6 +48,15 @@
       <Filter>Engine\3rdparty\imgui</Filter>
     </ClCompile>
     <ClCompile Include="TestRenderNormal.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Geometry.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="RenderResources.cpp">
+      <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Render.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
   </ItemGroup>
@@ -993,9 +1002,6 @@
     <ClInclude Include="TestApp.h">
       <Filter>Test</Filter>
     </ClInclude>
-    <ClInclude Include="RenderResources.h">
-      <Filter>Engine\Private</Filter>
-    </ClInclude>
     <ClInclude Include="RenderCore.h">
       <Filter>Engine\Private</Filter>
     </ClInclude>
@@ -1031,6 +1037,12 @@
     </ClInclude>
     <ClInclude Include="..\3rdparty\imgui\imgui_internal.h">
       <Filter>Engine\3rdparty\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="Geometry.h">
+      <Filter>Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="RenderResources.h">
+      <Filter>Engine</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

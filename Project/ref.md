@@ -21,10 +21,24 @@ https://github.com/juj/wasm_webgpu
 
 https://github.com/floooh/sokol
 
+
+===============================================================================
+Collisions
+===============================================================================
+https://github.com/polymonster/maths/blob/master/mat.h
+https://github.com/LogicEu/photon
+https://github.com/tidwall/tg
+
 ===============================================================================
 Math
 ===============================================================================
+https://github.com/polymonster/maths/blob/master/mat.h
 https://github.com/HandmadeMath/HandmadeMath
 https://github.com/datenwolf/linmath.h/blob/master/linmath.h
 https://github.com/polymonster/maths/tree/master
-https://github.com/LogicEu/photon
+
+===============================================================================
+Прочее
+===============================================================================
+https://github.com/tidwall/rtree.c - для разбиения пространства?
+https://github.com/tidwall/json.c
