@@ -16,18 +16,41 @@
 #include "RenderResources.h"
 #include "RenderModel.h"
 //-----------------------------------------------------------------------------
-constexpr uint32_t kWidth = 1024;
-constexpr uint32_t kHeight = 768;
-
 RenderPipeline pipeline;
-
-bool initBindGroupLayout(wgpu::Device device)
+//-----------------------------------------------------------------------------
+struct RenderData
 {
-	return true;
-}
+	// Device
+	std::unique_ptr<dawn::native::Instance> dawnInstance = nullptr;
+	wgpu::Device device = nullptr;
+	wgpu::Queue queue = nullptr;
 
-bool initRenderPipeline(wgpu::Device device, wgpu::TextureFormat swapChainFormat, wgpu::TextureFormat depthTextureFormat)
+	// Swap Chain
+	wgpu::Surface surface = nullptr;
+	wgpu::TextureFormat swapChainFormat = wgpu::TextureFormat::Undefined;
+	wgpu::SwapChain swapChain = nullptr;
+
+	// Depth Buffer
+	wgpu::Texture depthTexture = nullptr;
+	wgpu::TextureView depthTextureView = nullptr;
+	wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
+};
+//-----------------------------------------------------------------------------
+bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameBufferHeight)
 {
+	m_data = new RenderData();
+	m_frameWidth = frameBufferWidth;
+	m_frameHeight = frameBufferHeight;
+
+	if (!createDevice(glfwWindow))
+		return false;
+
+	if (!initSwapChain(m_frameWidth, m_frameHeight))
+		return false;
+	if (!initDepthBuffer(m_frameWidth, m_frameHeight))
+		return false;
+
+
 	const char* shaderText = R"(
 struct VSOut {
 	@builtin(position) pos: vec4<f32>,
@@ -64,132 +87,21 @@ fn fs_main(@location(0) coord: vec2<f32>) -> @location(0) vec4<f32>
 }
 
 )";
-	wgpu::ShaderModule shaderModule = CreateShaderModule(device, shaderText);
+	wgpu::ShaderModule shaderModule = CreateShaderModule(m_data->device, shaderText);
 
 	pipeline.SetPrimitiveState();
-	pipeline.SetBlendState(swapChainFormat);
+	pipeline.SetBlendState(m_data->swapChainFormat);
 	pipeline.SetVertexBufferLayout({});
 	pipeline.SetVertexShaderCode(shaderModule);
 	pipeline.SetFragmentShaderCode(shaderModule);
 
-	pipeline.Create(device);
-
-	return true;
-}
-
-bool initTexture(wgpu::Device device)
-{
-	return true;
-}
-
-bool initGeometry(wgpu::Device device)
-{
-	return true;
-}
-
-bool initUniforms(wgpu::Device device)
-{
-	return true;
-}
-
-bool initBindGroup(wgpu::Device device)
-{
-	return true;
-}
-
-bool initGui(GLFWwindow* window, wgpu::Device device, wgpu::TextureFormat swapChainFormat, wgpu::TextureFormat depthTextureFormat)
-{
-	// Setup Dear ImGui context
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	auto io = ImGui::GetIO();
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-	io.IniFilename = nullptr;
-
-	// Setup Platform/Renderer backends
-	ImGui_ImplGlfw_InitForOther(window, true);
-	ImGui_ImplWGPU_Init(device.Get(), 3, (WGPUTextureFormat)swapChainFormat, (WGPUTextureFormat)depthTextureFormat);
-	return true;
-}
-
-void terminateGui()
-{
-	ImGui_ImplGlfw_Shutdown();
-	ImGui_ImplWGPU_Shutdown();
-}
-
-void updateGui(wgpu::RenderPassEncoder renderPass)
-{
-	// Start the Dear ImGui frame
-	ImGui_ImplWGPU_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
-
-	// Build our UI
-	{
-		ImGui::Begin("Test");
-		ImGui::Button("Test");
-		ImGui::End();
-	}
-
-	ImGui::EndFrame();
-	ImGui::Render();
-	ImGui_ImplWGPU_RenderDrawData(ImGui::GetDrawData(), renderPass.Get());
-}
-
-//-----------------------------------------------------------------------------
-struct RenderData
-{
-	// Device
-	std::unique_ptr<dawn::native::Instance> dawnInstance = nullptr;
-	wgpu::Device device = nullptr;
-	wgpu::Queue queue = nullptr;
-
-	// Swap Chain
-	wgpu::Surface surface = nullptr;
-	wgpu::TextureFormat swapChainFormat = wgpu::TextureFormat::Undefined;
-	wgpu::SwapChain swapChain = nullptr;
-
-	// Depth Buffer
-	wgpu::Texture depthTexture = nullptr;
-	wgpu::TextureView depthTextureView = nullptr;
-	wgpu::TextureFormat depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
-};
-//-----------------------------------------------------------------------------
-bool Render::Create(void* glfwWindow)
-{
-	m_data = new RenderData();
-
-	if (!createDevice(glfwWindow))
-		return false;
-
-	if (!initSwapChain(kWidth, kHeight))
-		return false;
-	if (!initDepthBuffer(kWidth, kHeight))
-		return false;
-
-	if (!initBindGroupLayout(m_data->device))
-		return false;
-	if (!initRenderPipeline(m_data->device, m_data->swapChainFormat, m_data->depthTextureFormat))
-		return false;
-	if (!initTexture(m_data->device))
-		return false;
-	if (!initGeometry(m_data->device))
-		return false;
-	if (!initUniforms(m_data->device))
-		return false;
-	if (!initBindGroup(m_data->device))
-		return false;
-	if (!initGui((GLFWwindow*)glfwWindow, m_data->device, m_data->swapChainFormat, m_data->depthTextureFormat))
-		return false;
+	pipeline.Create(m_data->device);
 
 	return true;
 }
 //-----------------------------------------------------------------------------
 void Render::Destroy()
 {
-	terminateGui();
 	terminateDepthBuffer();
 	terminateSwapChain();
 	m_data->dawnInstance.reset();
@@ -212,11 +124,10 @@ void Render::Frame()
 	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
 		renderPass.Start(encoder);
-		renderPass.SetViewport(0.0f, 0.0f, kWidth, kHeight, 0.0f, 1.0f);
-		renderPass.SetScissorRect(0, 0, kWidth, kHeight);
+		renderPass.SetViewport(0.0f, 0.0f, m_frameWidth, m_frameHeight, 0.0f, 1.0f);
+		renderPass.SetScissorRect(0, 0, m_frameWidth, m_frameHeight);
 		renderPass.SetPipeline(pipeline);
 		renderPass.Draw(6);
-		//updateGui(renderPass.renderPass);
 
 		renderPass.End();
 	}
@@ -358,34 +269,16 @@ bool Render::createDevice(void* glfwWindow)
 //-----------------------------------------------------------------------------
 bool Render::Resize(int width, int height)
 {
+	m_frameWidth = width;
+	m_frameHeight = height;
+
 	terminateDepthBuffer();
 	terminateSwapChain();
 
 	if (!initSwapChain(width, height)) return false;
 	if (!initDepthBuffer(width, height)) return false;
 
-	updateProjectionMatrix(width, height);
-
 	return true;
-}
-//-----------------------------------------------------------------------------
-void Render::OnMouseMove(double xpos, double ypos)
-{
-
-}
-//-----------------------------------------------------------------------------
-void Render::OnMouseButton(int button, int action, int mods, double xpos, double ypos)
-{
-	ImGuiIO& io = ImGui::GetIO();
-	if (io.WantCaptureMouse)
-	{
-		// Don't rotate the camera if the mouse is already captured by an ImGui interaction at this frame.
-		return;
-	}
-}
-//-----------------------------------------------------------------------------
-void Render::OnScroll(double xoffset, double yoffset)
-{
 }
 //-----------------------------------------------------------------------------
 bool Render::initSwapChain(int width, int height)
@@ -441,15 +334,5 @@ void Render::terminateDepthBuffer()
 	if (m_data->depthTexture) m_data->depthTexture.Destroy();
 	m_data->depthTexture = nullptr;
 	m_data->depthTextureView = nullptr;
-}
-//-----------------------------------------------------------------------------
-void Render::updateProjectionMatrix(int width, int height)
-{
-
-}
-//-----------------------------------------------------------------------------
-void Render::updateViewMatrix()
-{
-
 }
 //-----------------------------------------------------------------------------

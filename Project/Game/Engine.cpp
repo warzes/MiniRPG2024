@@ -126,14 +126,13 @@ bool Engine::init()
 	glfwSetMouseButtonCallback(m_data->window, onMouseButton);
 	glfwSetScrollCallback(m_data->window, onScroll);
 
+	glfwGetFramebufferSize(m_data->window, &WindowWidth, &WindowHeight);
 
-	if (!m_render.Create((void*)m_data->window))
+	if (!m_render.Create((void*)m_data->window, WindowWidth, WindowHeight))
 	{
 		Error("Render system not create!");
 		return false;
 	}
-
-	glfwGetFramebufferSize(m_data->window, &WindowWidth, &WindowHeight);
 
 	return true;
 }
@@ -166,18 +165,18 @@ void Engine::OnResize()
 //-----------------------------------------------------------------------------
 void Engine::OnMouseMove(double xpos, double ypos)
 {
-	m_render.OnMouseMove(xpos, ypos);
+	//m_render.OnMouseMove(xpos, ypos);
 }
 //-----------------------------------------------------------------------------
 void Engine::OnMouseButton(int button, int action, int mods)
 {
 	double xpos, ypos;
 	glfwGetCursorPos(m_data->window, &xpos, &ypos);
-	m_render.OnMouseButton(button, action, mods, xpos, ypos);
+	//m_render.OnMouseButton(button, action, mods, xpos, ypos);
 }
 //-----------------------------------------------------------------------------
 void Engine::OnScroll(double xoffset, double yoffset)
 {
-	m_render.OnScroll(xoffset, yoffset);
+	//m_render.OnScroll(xoffset, yoffset);
 }
 //-----------------------------------------------------------------------------

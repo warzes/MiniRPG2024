@@ -14,9 +14,6 @@
     <ClCompile Include="..\3rdparty\DawnLib.cpp">
       <Filter>Engine\3rdparty\dawn</Filter>
     </ClCompile>
-    <ClCompile Include="TestRenderNormal2.cpp">
-      <Filter>Engine</Filter>
-    </ClCompile>
     <ClCompile Include="Core.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
@@ -47,9 +44,6 @@
     <ClCompile Include="..\3rdparty\imgui\imgui_impl_wgpu.cpp">
       <Filter>Engine\3rdparty\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="TestRenderNormal.cpp">
-      <Filter>Engine</Filter>
-    </ClCompile>
     <ClCompile Include="Geometry.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
@@ -58,6 +52,12 @@
     </ClCompile>
     <ClCompile Include="Render.cpp">
       <Filter>Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="TestRenderNormal.cpp">
+      <Filter>Engine\TempExample</Filter>
+    </ClCompile>
+    <ClCompile Include="TestRenderNormal2.cpp">
+      <Filter>Engine\TempExample</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -108,6 +108,9 @@
     </Filter>
     <Filter Include="Engine\3rdparty\imgui">
       <UniqueIdentifier>{87efeede-36c0-4037-b8d3-699bf0f3fc26}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\TempExample">
+      <UniqueIdentifier>{af3b2573-a93b-4c7a-aa01-33eded8ee604}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
