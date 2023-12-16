@@ -8,10 +8,12 @@ https://github.com/petitg1987/urchinEngine
 ===============================================================================
 WebGPU
 ===============================================================================
+https://eliemichel.github.io/LearnWebGPU/introduction.html
+https://github.com/samdauwe/webgpu-native-examples
+
+
 https://github.com/google/dawn
 https://github.com/cwoffenden/hello-webgpu/tree/main
-https://eliemichel.github.io/LearnWebGPU/introduction.html
-
 https://github.com/pplux/wgpu.hpp
 https://forum.unity.com/threads/early-access-to-the-new-webgpu-backend-in-unity-2023-3.1516621/
 https://www.w3.org/TR/webgpu/

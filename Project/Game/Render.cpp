@@ -4,7 +4,6 @@
 #include <Dawn/native/DawnNative.h>
 #include <webgpu/webgpu_glfw.h>
 #include <Dawn/utils/WGPUHelpers.h>
-#include <Dawn/utils/ComboRenderPipelineDescriptor.h>
 #include <Dawn/dawn_proc.h>
 #include <glfw.h>
 
@@ -20,6 +19,8 @@
 constexpr uint32_t kWidth = 1024;
 constexpr uint32_t kHeight = 768;
 
+RenderPipeline pipeline;
+
 bool initBindGroupLayout(wgpu::Device device)
 {
 	return true;
@@ -27,6 +28,52 @@ bool initBindGroupLayout(wgpu::Device device)
 
 bool initRenderPipeline(wgpu::Device device, wgpu::TextureFormat swapChainFormat, wgpu::TextureFormat depthTextureFormat)
 {
+	const char* shaderText = R"(
+struct VSOut {
+	@builtin(position) pos: vec4<f32>,
+	@location(0) coord: vec2<f32>
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) idx : u32) -> VSOut
+{
+	var data = array<vec2<f32>, 6>(
+		vec2<f32>(-1.0, -1.0),
+		vec2<f32>(1.0, -1.0),
+		vec2<f32>(1.0, 1.0),
+
+		vec2<f32>(-1.0, -1.0),
+		vec2<f32>(-1.0, 1.0),
+		vec2<f32>(1.0, 1.0),
+	);
+
+	var pos = data[idx];
+
+	var out : VSOut;
+	out.pos = vec4<f32>(pos, 0.0, 1.0);
+	out.coord.x = (pos.x + 1.0) / 2.0;
+	out.coord.y = (1.0 - pos.y) / 2.0;
+
+	return out;
+}
+
+@fragment
+fn fs_main(@location(0) coord: vec2<f32>) -> @location(0) vec4<f32>
+{
+	return vec4<f32>(coord.x, coord.y, 0.5, 1.0);
+}
+
+)";
+	wgpu::ShaderModule shaderModule = CreateShaderModule(device, shaderText);
+
+	pipeline.SetPrimitiveState();
+	pipeline.SetBlendState(swapChainFormat);
+	pipeline.SetVertexBufferLayout({});
+	pipeline.SetVertexShaderCode(shaderModule);
+	pipeline.SetFragmentShaderCode(shaderModule);
+
+	pipeline.Create(device);
+
 	return true;
 }
 
@@ -158,40 +205,18 @@ void Render::Frame()
 		return;
 	}
 
-	wgpu::RenderPassColorAttachment renderPassColorAttachment{};
-	renderPassColorAttachment.view = backbufferView;
-	renderPassColorAttachment.resolveTarget = nullptr;
-	renderPassColorAttachment.loadOp = wgpu::LoadOp::Clear;
-	renderPassColorAttachment.storeOp = wgpu::StoreOp::Store;
-	renderPassColorAttachment.clearValue = wgpu::Color{ 0.05f, 0.05f, 0.05f, 1.0f };
-
-	wgpu::RenderPassDepthStencilAttachment depthStencilAttachment{};
-	depthStencilAttachment.view = m_data->depthTextureView;
-	// The initial value of the depth buffer, meaning "far"
-	depthStencilAttachment.depthClearValue = 1.0f;
-	// Operation settings comparable to the color attachment
-	depthStencilAttachment.depthLoadOp = wgpu::LoadOp::Clear;
-	depthStencilAttachment.depthStoreOp = wgpu::StoreOp::Store;
-	// we could turn off writing to the depth buffer globally here
-	depthStencilAttachment.depthReadOnly = false;
-	// Stencil setup, mandatory but unused
-	depthStencilAttachment.stencilClearValue = 0;
-	//depthStencilAttachment.stencilLoadOp = wgpu::LoadOp::Clear;
-	//depthStencilAttachment.stencilStoreOp = wgpu::StoreOp::Store;
-	//depthStencilAttachment.stencilReadOnly = true;
-
-	wgpu::RenderPassDescriptor renderPassDesc{};
-	renderPassDesc.colorAttachmentCount = 1;
-	renderPassDesc.colorAttachments = &renderPassColorAttachment;
-	renderPassDesc.depthStencilAttachment = &depthStencilAttachment;
-	renderPassDesc.timestampWrites = nullptr;
-
-	wgpu::CommandEncoderDescriptor commandEncoderDesc{};
-	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder(&commandEncoderDesc);
+	RenderPass renderPass;
+	//renderPass.SetTextureView(backbufferView, m_data->depthTextureView);
+	renderPass.SetTextureView(backbufferView, nullptr);
+		
+	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
-		wgpu::RenderPassEncoder renderPass = encoder.BeginRenderPass(&renderPassDesc);
-
-		updateGui(renderPass);
+		renderPass.Start(encoder);
+		renderPass.SetViewport(0.0f, 0.0f, kWidth, kHeight, 0.0f, 1.0f);
+		renderPass.SetScissorRect(0, 0, kWidth, kHeight);
+		renderPass.SetPipeline(pipeline);
+		renderPass.Draw(6);
+		//updateGui(renderPass.renderPass);
 
 		renderPass.End();
 	}
@@ -394,6 +419,8 @@ bool Render::initDepthBuffer(int width, int height)
 	depthTextureDescriptor.viewFormatCount = 1;
 	depthTextureDescriptor.viewFormats = (wgpu::TextureFormat*)&m_data->depthTextureFormat;
 	m_data->depthTexture = m_data->device.CreateTexture(&depthTextureDescriptor);
+	if (!m_data->depthTexture)
+		return false;
 
 	// Create the view of the depth texture manipulated by the rasterizer
 	wgpu::TextureViewDescriptor depthTextureViewDescriptor{};
