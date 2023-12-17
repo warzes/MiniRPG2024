@@ -10,7 +10,7 @@ WebGPU
 ===============================================================================
 https://eliemichel.github.io/LearnWebGPU/introduction.html
 https://github.com/samdauwe/webgpu-native-examples
-
+https://webgpu.github.io/webgpu-samples/
 
 https://github.com/google/dawn
 https://github.com/cwoffenden/hello-webgpu/tree/main

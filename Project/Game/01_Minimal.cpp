@@ -7,14 +7,13 @@
 #include <Dawn/dawn_proc.h>
 #include <glfw.h>
 
-#include <imgui/imgui.h>
-#include <imgui/imgui_impl_wgpu.h>
-#include <imgui/imgui_impl_glfw.h>
-
 #include "RenderUtils.h"
 #include "RenderCore.h"
 #include "RenderResources.h"
 #include "RenderModel.h"
+//-----------------------------------------------------------------------------
+// Minimal
+// Minimalistic render pipeline demonstrating how to render a full - screen colored quad.
 //-----------------------------------------------------------------------------
 RenderPipeline pipeline;
 //-----------------------------------------------------------------------------

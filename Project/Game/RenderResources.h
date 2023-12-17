@@ -14,11 +14,15 @@ public:
 	virtual ~Buffer();
 
 	wgpu::Buffer buffer = nullptr;
+
+protected:
+	bool create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t count, uint64_t size, const void* data);
 };
 
 class VertexBuffer final : public Buffer
 {
-
+public:
+	bool Create(const wgpu::Device& device, uint64_t vertexCount, uint64_t vertexSize, const void* data);
 };
 
 class IndexBuffer final : public Buffer
@@ -41,13 +45,16 @@ class VertexBufferLayout
 {
 public:
 	// example offset = offsetof(VertexAttributes, position);
+	void SetVertexSize(uint64_t size);
 	void AddAttrib(wgpu::VertexFormat format, uint64_t offset);
-	const wgpu::VertexBufferLayout& Get();
+	void AddAttrib(uint32_t shaderLocation, wgpu::VertexFormat format, uint64_t offset);
+	wgpu::VertexBufferLayout Get() const;
 	
 	bool IsZero() const;
 
 private:
 	std::vector<wgpu::VertexAttribute> m_attribs;
+	uint64_t m_size = 0;
 };
 
 class RenderPipeline
@@ -70,6 +77,7 @@ public:
 		wgpu::ColorWriteMask writeMast = wgpu::ColorWriteMask::All);
 
 	void SetVertexBufferLayout(VertexBufferLayout vertexBufferLayout);
+	void SetVertexBufferLayout(const std::vector<VertexBufferLayout>& vertexBufferLayout);
 	void SetVertexShaderCode(wgpu::ShaderModule shaderModule, const char* entryPoint = "vs_main");
 	void SetFragmentShaderCode(wgpu::ShaderModule shaderModule, const char* entryPoint = "fs_main");
 
@@ -80,7 +88,8 @@ private:
 	wgpu::RenderPipelineDescriptor m_pipelineDescriptor{};
 	wgpu::BlendState m_blendState{};
 	wgpu::ColorTargetState m_colorTargetState{};
-	VertexBufferLayout m_vbLayout{};
+	std::vector<VertexBufferLayout> m_vbLayout;
+	std::vector<wgpu::VertexBufferLayout> m_privateLayout;
 	wgpu::FragmentState m_fragmentState{};
 };
 

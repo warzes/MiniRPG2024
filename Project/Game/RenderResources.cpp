@@ -6,25 +6,56 @@ Buffer::Buffer()
 //-----------------------------------------------------------------------------
 Buffer::~Buffer()
 {
-	buffer.Destroy();
-	buffer = nullptr;
+	if (buffer)
+	{
+		buffer.Destroy();
+		buffer = nullptr;
+	}
+}
+//-----------------------------------------------------------------------------
+bool Buffer::create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t count, uint64_t size, const void* data)
+{
+	uint64_t bufferSize = count * size;
+	const wgpu::BufferDescriptor descriptor{
+		.usage = usage | wgpu::BufferUsage::CopyDst,
+		.size = bufferSize
+	};
+	buffer = device.CreateBuffer(&descriptor);
+
+	if (data) device.GetQueue().WriteBuffer(buffer, 0, data, bufferSize);
+	return true;
+}
+//-----------------------------------------------------------------------------
+bool VertexBuffer::Create(const wgpu::Device& device, uint64_t vertexCount, uint64_t vertexSize, const void* data)
+{
+	return create(device, wgpu::BufferUsage::Vertex, vertexCount, vertexSize, data);
+}
+//-----------------------------------------------------------------------------
+void VertexBufferLayout::SetVertexSize(uint64_t size)
+{
+	m_size = size;
 }
 //-----------------------------------------------------------------------------
 void VertexBufferLayout::AddAttrib(wgpu::VertexFormat format, uint64_t offset)
 {
+	AddAttrib(m_attribs.size(), format, offset);
+}
+//-----------------------------------------------------------------------------
+void VertexBufferLayout::AddAttrib(uint32_t shaderLocation, wgpu::VertexFormat format, uint64_t offset)
+{
 	wgpu::VertexAttribute attrib;
-	attrib.shaderLocation = m_attribs.size();
+	attrib.shaderLocation = shaderLocation;
 	attrib.format = format;
 	attrib.offset = offset;
 	m_attribs.push_back(attrib);
 }
 //-----------------------------------------------------------------------------
-const wgpu::VertexBufferLayout& VertexBufferLayout::Get()
+wgpu::VertexBufferLayout VertexBufferLayout::Get() const
 {
-	wgpu::VertexBufferLayout vertexBufferLayout{};
+	wgpu::VertexBufferLayout vertexBufferLayout;
 	vertexBufferLayout.attributeCount = static_cast<uint32_t>(m_attribs.size());
 	vertexBufferLayout.attributes = m_attribs.data();
-	vertexBufferLayout.arrayStride = sizeof(m_attribs);
+	vertexBufferLayout.arrayStride = m_size;
 	vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
 	return vertexBufferLayout;
 }
@@ -58,16 +89,27 @@ void RenderPipeline::SetBlendState(wgpu::TextureFormat swapChainFormat, wgpu::Bl
 //-----------------------------------------------------------------------------
 void RenderPipeline::SetVertexBufferLayout(VertexBufferLayout vertexBufferLayout)
 {
-	m_vbLayout = vertexBufferLayout;
-	if (m_vbLayout.IsZero())
+	SetVertexBufferLayout(std::vector<VertexBufferLayout>{ vertexBufferLayout });
+}
+//-----------------------------------------------------------------------------
+void RenderPipeline::SetVertexBufferLayout(const std::vector<VertexBufferLayout>& vertexBufferLayout)
+{
+	if (vertexBufferLayout.empty() || vertexBufferLayout[0].IsZero())
 	{
 		m_pipelineDescriptor.vertex.bufferCount = 0;
 		m_pipelineDescriptor.vertex.buffers = nullptr;
 	}
 	else
 	{
-		m_pipelineDescriptor.vertex.bufferCount = 1;
-		m_pipelineDescriptor.vertex.buffers = &m_vbLayout.Get();
+		m_vbLayout.resize(vertexBufferLayout.size());
+		m_privateLayout.resize(vertexBufferLayout.size());
+		for (size_t i = 0; i < vertexBufferLayout.size(); i++)
+		{
+			m_vbLayout[i] = vertexBufferLayout[i];
+			m_privateLayout[i] = m_vbLayout[i].Get();
+		}
+		m_pipelineDescriptor.vertex.bufferCount = m_privateLayout.size();
+		m_pipelineDescriptor.vertex.buffers = m_privateLayout.data();
 	}
 }
 //-----------------------------------------------------------------------------
@@ -106,7 +148,7 @@ RenderPass::RenderPass()
 	renderPassColorAttachment.resolveTarget = nullptr;
 	renderPassColorAttachment.loadOp = wgpu::LoadOp::Clear;
 	renderPassColorAttachment.storeOp = wgpu::StoreOp::Store;
-	renderPassColorAttachment.clearValue = wgpu::Color{ 0.05f, 0.05f, 0.05f, 1.0f };
+	renderPassColorAttachment.clearValue = wgpu::Color{ 0.1f, 0.2f, 0.3f, 1.0f };
 
 	// The initial value of the depth buffer, meaning "far"
 	depthStencilAttachment.depthClearValue = 1.0f;

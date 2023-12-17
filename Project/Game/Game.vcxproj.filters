@@ -50,13 +50,19 @@
     <ClCompile Include="RenderResources.cpp">
       <Filter>Engine</Filter>
     </ClCompile>
-    <ClCompile Include="Render.cpp">
-      <Filter>Engine</Filter>
-    </ClCompile>
     <ClCompile Include="TestRenderNormal.cpp">
       <Filter>Engine\TempExample</Filter>
     </ClCompile>
     <ClCompile Include="TestRenderNormal2.cpp">
+      <Filter>Engine\TempExample</Filter>
+    </ClCompile>
+    <ClCompile Include="01_Minimal.cpp">
+      <Filter>Engine\TempExample</Filter>
+    </ClCompile>
+    <ClCompile Include="02_Square.cpp">
+      <Filter>Engine\TempExample</Filter>
+    </ClCompile>
+    <ClCompile Include="03_Triangle.cpp">
       <Filter>Engine\TempExample</Filter>
     </ClCompile>
   </ItemGroup>
