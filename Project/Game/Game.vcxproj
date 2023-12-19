@@ -431,6 +431,7 @@
     <ClInclude Include="..\3rdparty\tiny_obj_loader.h" />
     <ClInclude Include="Core.h" />
     <ClInclude Include="Engine.h" />
+    <ClInclude Include="Examples.h" />
     <ClInclude Include="Geometry.h" />
     <ClInclude Include="Render.h" />
     <ClInclude Include="RenderCore.h" />

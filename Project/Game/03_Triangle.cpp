@@ -11,7 +11,7 @@
 #include "RenderCore.h"
 #include "RenderResources.h"
 #include "RenderModel.h"
-https://github.com/samdauwe/webgpu-native-examples/blob/master/src/examples/triangle.c
+#include "Examples.h"
 //-----------------------------------------------------------------------------
 // Triangle
 // Basic and verbose example for getting a colored triangle rendered to the screen using WebGPU. 
@@ -20,7 +20,15 @@ RenderPipeline pipeline;
 VertexBuffer vb;
 IndexBuffer ib;
 UniformBuffer ub;
+wgpu::BindGroupEntry bindings{};
 BindGroup bindGroup;
+wgpu::BindGroupLayoutEntry bindingLayout{};
+wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
+wgpu::BindGroupDescriptor bindGroupDesc{};
+BindGroupLayout bindGroupLayout;
+wgpu::PipelineLayoutDescriptor layoutDesc{};
+PipelineLayout pipelineLayout;
+VertexBufferLayout layout;
 
 struct Vertex
 {
@@ -29,10 +37,13 @@ struct Vertex
 };
 struct Uniform
 {
-	glm::mat4 projection;
-	glm::mat4 model;
-	glm::mat4 view;
-};
+	glm::mat4 projection = glm::mat4(1.0f);
+	glm::mat4 model = glm::mat4(1.0f);
+	glm::mat4 view = glm::mat4(1.0f);
+} ubo_vs;
+static_assert(sizeof(Uniform) % 16 == 0);
+
+camera_t Camera;
 //-----------------------------------------------------------------------------
 struct RenderData
 {
@@ -57,61 +68,118 @@ bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameB
 	m_data = new RenderData();
 	m_frameWidth = frameBufferWidth;
 	m_frameHeight = frameBufferHeight;
-
 	if (!createDevice(glfwWindow))
 		return false;
-
 	if (!initSwapChain(m_frameWidth, m_frameHeight))
 		return false;
 	if (!initDepthBuffer(m_frameWidth, m_frameHeight))
 		return false;
 
+	{
+		Camera.type = CameraType_LookAt;
+		Camera.SetPosition({ 0.0f, 0.0f, 2.5f });
+		Camera.SetRotation({ 0.0f, 0.0f, 0.0f });
+		Camera.SetPerspective(60.0f, 1024.0f / 768.0f, 0.0f, 256.0f);
+	}
 
-	static const float positions[] = {
-		-0.5f,  0.5f, 0.0f, // v0
-		 0.5f,  0.5f, 0.0f, // v1
-		-0.5f, -0.5f, 0.0f, // v2
-		 0.5f, -0.5f, 0.0f, // v3
-	};
+	{
+		// Setup vertices (x, y, z, r, g, b)
+		static const Vertex vertex_buffer[] = 
+		{
+		  {
+			.position = {1.0f, -1.0f, 0.0f},
+			.color = {1.0f, 0.0f, 0.0f},
+		  },
+		  {
+			.position = {-1.0f, -1.0f, 0.0f},
+			.color = {0.0f, 1.0f, 0.0f},
+		  },
+		  {
+			.position = {0.0f, 1.0f, 0.0f},
+			.color = {0.0f, 0.0f, 1.0f},
+		  },
+		};
+		vb.Create(m_data->device, 3, sizeof(Vertex), vertex_buffer);
 
-	positionsBuffer.Create(m_data->device, 4, sizeof(float) * 3, positions);
+		// Setup indices
+		static const uint32_t index_buffer[] = {
+		  0, 1, 2
+		};
+		ib.Create(m_data->device, 3, sizeof(uint32_t), index_buffer);
+	}
 
-	static const float colors[] = {
-		1.0f, 0.0f, 0.0f, 1.0f, /* v0 */
-		0.0f, 1.0f, 0.0f, 1.0f, /* v1 */
-		0.0f, 0.0f, 1.0f, 1.0f, /* v2 */
-		1.0f, 1.0f, 0.0f, 1.0f  /* v3 */
-	};
-	colorsBuffer.Create(m_data->device, 4, sizeof(float) * 4, colors);
+	{
+		ub.Create(m_data->device, sizeof(ubo_vs), &ubo_vs);
+	}
 
-	std::vector<VertexBufferLayout> layouts(2);
-	layouts[0].SetVertexSize(3 * 4);
-	layouts[0].AddAttrib(wgpu::VertexFormat::Float32x3, 0);
-	layouts[1].SetVertexSize(4 * 4);
-	layouts[1].AddAttrib(1, wgpu::VertexFormat::Float32x4, 0);
+	// Bind group layout
+	{
+		bindingLayout.binding = 0;
+		bindingLayout.visibility = wgpu::ShaderStage::Vertex;
+		bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
+		bindingLayout.buffer.hasDynamicOffset = false;
+		bindingLayout.buffer.minBindingSize = sizeof(Uniform);
+
+		bindGroupLayoutDesc.entryCount = 1;
+		bindGroupLayoutDesc.entries = &bindingLayout;
+		bindGroupLayout.layout = m_data->device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+	}
+
+	// Create the pipeline layout
+	{		
+		layoutDesc.bindGroupLayoutCount = 1;
+		layoutDesc.bindGroupLayouts = &bindGroupLayout.layout;
+		pipelineLayout.layout = m_data->device.CreatePipelineLayout(&layoutDesc);
+	}
+
+	// Bind Group
+	{
+		// Binding 0 : Uniform buffer
+		bindings.binding = 0;
+		bindings.buffer = ub.buffer;
+		bindings.offset = 0;
+		bindings.size = sizeof(Uniform);
+
+		bindGroupDesc.layout = bindGroupLayout.layout;
+		bindGroupDesc.entryCount = 1;
+		bindGroupDesc.entries = &bindings;
+		bindGroup.bindGroup = m_data->device.CreateBindGroup(&bindGroupDesc);
+	}
+
+	layout.SetVertexSize(sizeof(Vertex));
+	layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(Vertex, position));
+	layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(Vertex, color));
 
 	const char* shaderText = R"(
+struct UBO {
+	projectionMatrix : mat4x4<f32>,
+	modelMatrix      : mat4x4<f32>,
+	viewMatrix       : mat4x4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> ubo : UBO;
+
 struct VertexInput {
 	@location(0) position : vec3<f32>,
-	@location(1) color : vec4<f32>
+	@location(1) color : vec3<f32>
 };
 
 struct VertexOutput {
-	@builtin(position) Position : vec4<f32>,
-	@location(0) fragColor : vec4<f32>
+	@builtin(position) position : vec4<f32>,
+	@location(0) fragColor : vec3<f32>
 };
 
 @vertex
-fn vs_main(input : VertexInput) -> VertexOutput
+fn vs_main(vertex  : VertexInput) -> VertexOutput
 {
 	var output : VertexOutput;
-	output.fragColor = input.color;
-	output.Position = vec4<f32>(input.position, 1.0);
+	output.position = ubo.projectionMatrix * ubo.viewMatrix * ubo.modelMatrix * vec4<f32>(vertex.position.xyz, 1.0);
+	output.fragColor = vertex.color;
 	return output;
 };
 
 struct FragmentInput {
-	@location(0) fragColor : vec4<f32>
+	@location(0) fragColor : vec3<f32>
 };
 
 struct FragmentOutput {
@@ -119,23 +187,30 @@ struct FragmentOutput {
 };
 
 @fragment
-fn fs_main(input : FragmentInput) -> FragmentOutput
+fn fs_main(fragment : FragmentInput) -> FragmentOutput
 {
 	var output : FragmentOutput;
-	output.outColor = input.fragColor;
+	output.outColor = vec4<f32>(fragment.fragColor, 1.0);
 	return output;
 };
 )";
 	wgpu::ShaderModule shaderModule = CreateShaderModule(m_data->device, shaderText);
 
-	pipeline.SetPrimitiveState(wgpu::PrimitiveTopology::TriangleStrip, wgpu::IndexFormat::Uint16, wgpu::FrontFace::CCW, wgpu::CullMode::Front);
+	wgpu::DepthStencilState depthStencilState{};
+	depthStencilState.depthCompare = wgpu::CompareFunction::LessEqual;
+	depthStencilState.depthWriteEnabled = true;
+	depthStencilState.format = m_data->depthTextureFormat;
+	// Deactivate the stencil alltogether
+	depthStencilState.stencilReadMask = 0;
+	depthStencilState.stencilWriteMask = 0;
+
+	pipeline.SetPrimitiveState(wgpu::PrimitiveTopology::TriangleList, wgpu::IndexFormat::Undefined, wgpu::FrontFace::CCW, wgpu::CullMode::None);
 	pipeline.SetBlendState(m_data->swapChainFormat);
-	pipeline.SetVertexBufferLayout(layouts);
+	pipeline.SetDepthStencilState(depthStencilState);
+	pipeline.SetVertexBufferLayout(layout);
 	pipeline.SetVertexShaderCode(shaderModule);
 	pipeline.SetFragmentShaderCode(shaderModule);
-
 	pipeline.Create(m_data->device);
-
 
 	return true;
 }
@@ -150,6 +225,12 @@ void Render::Destroy()
 //-----------------------------------------------------------------------------
 void Render::Frame()
 {
+	ubo_vs.projection = Camera.matrices.perspective;
+	ubo_vs.view = Camera.matrices.view;
+	ubo_vs.model = glm::mat4(1.0f);
+	// Map uniform buffer and update it
+	m_data->queue.WriteBuffer(ub.buffer, 0, &ubo_vs, sizeof(ubo_vs));
+
 	wgpu::TextureView backbufferView = m_data->swapChain.GetCurrentTextureView();
 	if (!backbufferView)
 	{
@@ -158,8 +239,7 @@ void Render::Frame()
 	}
 
 	RenderPass renderPass;
-	//renderPass.SetTextureView(backbufferView, m_data->depthTextureView);
-	renderPass.SetTextureView(backbufferView, nullptr);
+	renderPass.SetTextureView(backbufferView, m_data->depthTextureView);
 
 	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
@@ -167,9 +247,10 @@ void Render::Frame()
 		renderPass.SetViewport(0.0f, 0.0f, m_frameWidth, m_frameHeight, 0.0f, 1.0f);
 		renderPass.SetScissorRect(0, 0, m_frameWidth, m_frameHeight);
 		renderPass.SetPipeline(pipeline);
-		renderPass.SetVertexBuffer(0, positionsBuffer);
-		renderPass.SetVertexBuffer(1, colorsBuffer);
-		renderPass.Draw(4);
+		renderPass.SetBindGroup(0, bindGroup, 0, nullptr);
+		renderPass.SetVertexBuffer(0, vb);
+		//renderPass.SetIndexBuffer(ib, wgpu::IndexFormat::Uint32);
+		renderPass.Draw(3, 1);
 		renderPass.End();
 	}
 
@@ -358,7 +439,7 @@ bool Render::initDepthBuffer(int width, int height)
 
 	// Create the view of the depth texture manipulated by the rasterizer
 	wgpu::TextureViewDescriptor depthTextureViewDescriptor{};
-	depthTextureViewDescriptor.aspect = wgpu::TextureAspect::DepthOnly;
+	depthTextureViewDescriptor.aspect = wgpu::TextureAspect::All;
 	depthTextureViewDescriptor.baseArrayLayer = 0;
 	depthTextureViewDescriptor.arrayLayerCount = 1;
 	depthTextureViewDescriptor.baseMipLevel = 0;

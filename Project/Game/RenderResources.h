@@ -16,7 +16,8 @@ public:
 	wgpu::Buffer buffer = nullptr;
 
 protected:
-	bool create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t count, uint64_t size, const void* data);
+	bool create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t bufferSize, const void* data);
+	bool create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t count, uint64_t sizeElement, const void* data);
 };
 
 class VertexBuffer final : public Buffer
@@ -27,18 +28,37 @@ public:
 
 class IndexBuffer final : public Buffer
 {
-
+public:
+	bool Create(const wgpu::Device& device, uint64_t indexCount, uint64_t indexSize, const void* data);
 };
 
 class UniformBuffer final : public Buffer
 {
-
+public:
+	bool Create(const wgpu::Device& device, uint64_t size, const void* data);
 };
 
 class BindGroup
 {
 public:
 	wgpu::BindGroup bindGroup = nullptr;
+};
+
+class BindGroupLayout
+{
+public:
+	void AddVertexUniform();
+	void Create();
+
+	wgpu::PipelineLayout CreatePipelineLayout() const;
+
+	wgpu::BindGroupLayout layout = nullptr;
+};
+
+class PipelineLayout
+{
+public:
+	wgpu::PipelineLayout layout = nullptr;
 };
 
 class VertexBufferLayout
@@ -76,10 +96,13 @@ public:
 		wgpu::BlendOperation alphaOperation = wgpu::BlendOperation::Add,
 		wgpu::ColorWriteMask writeMast = wgpu::ColorWriteMask::All);
 
+	void SetDepthStencilState(wgpu::DepthStencilState depthStencilState);
+
 	void SetVertexBufferLayout(VertexBufferLayout vertexBufferLayout);
 	void SetVertexBufferLayout(const std::vector<VertexBufferLayout>& vertexBufferLayout);
 	void SetVertexShaderCode(wgpu::ShaderModule shaderModule, const char* entryPoint = "vs_main");
 	void SetFragmentShaderCode(wgpu::ShaderModule shaderModule, const char* entryPoint = "fs_main");
+	void SetPipelineLayout(const PipelineLayout& layout); // ===> может BindGroupLayout???
 
 	bool Create(wgpu::Device device);
 
@@ -91,6 +114,7 @@ private:
 	std::vector<VertexBufferLayout> m_vbLayout;
 	std::vector<wgpu::VertexBufferLayout> m_privateLayout;
 	wgpu::FragmentState m_fragmentState{};
+	wgpu::DepthStencilState m_depthStencilState{};
 };
 
 class RenderPass

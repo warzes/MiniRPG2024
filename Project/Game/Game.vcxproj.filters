@@ -1053,6 +1053,9 @@
     <ClInclude Include="RenderResources.h">
       <Filter>Engine</Filter>
     </ClInclude>
+    <ClInclude Include="Examples.h">
+      <Filter>Engine\TempExample</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\3rdparty\glm\detail\func_common.inl">

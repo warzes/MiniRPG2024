@@ -13,9 +13,8 @@ Buffer::~Buffer()
 	}
 }
 //-----------------------------------------------------------------------------
-bool Buffer::create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t count, uint64_t size, const void* data)
+bool Buffer::create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t bufferSize, const void* data)
 {
-	uint64_t bufferSize = count * size;
 	const wgpu::BufferDescriptor descriptor{
 		.usage = usage | wgpu::BufferUsage::CopyDst,
 		.size = bufferSize
@@ -26,9 +25,25 @@ bool Buffer::create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_
 	return true;
 }
 //-----------------------------------------------------------------------------
+bool Buffer::create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_t count, uint64_t sizeElement, const void* data)
+{
+	uint64_t bufferSize = count * sizeElement;
+	return create(device, usage, bufferSize, data);
+}
+//-----------------------------------------------------------------------------
 bool VertexBuffer::Create(const wgpu::Device& device, uint64_t vertexCount, uint64_t vertexSize, const void* data)
 {
 	return create(device, wgpu::BufferUsage::Vertex, vertexCount, vertexSize, data);
+}
+//-----------------------------------------------------------------------------
+bool IndexBuffer::Create(const wgpu::Device& device, uint64_t indexCount, uint64_t indexSize, const void* data)
+{
+	return create(device, wgpu::BufferUsage::Index, indexCount, indexSize, data);
+}
+//-----------------------------------------------------------------------------
+bool UniformBuffer::Create(const wgpu::Device& device, uint64_t size, const void* data)
+{
+	return create(device, wgpu::BufferUsage::Uniform, size, data);
 }
 //-----------------------------------------------------------------------------
 void VertexBufferLayout::SetVertexSize(uint64_t size)
@@ -87,6 +102,11 @@ void RenderPipeline::SetBlendState(wgpu::TextureFormat swapChainFormat, wgpu::Bl
 	m_colorTargetState.writeMask = writeMast;
 }
 //-----------------------------------------------------------------------------
+void RenderPipeline::SetDepthStencilState(wgpu::DepthStencilState depthStencilState)
+{
+	m_depthStencilState = depthStencilState;
+}
+//-----------------------------------------------------------------------------
 void RenderPipeline::SetVertexBufferLayout(VertexBufferLayout vertexBufferLayout)
 {
 	SetVertexBufferLayout(std::vector<VertexBufferLayout>{ vertexBufferLayout });
@@ -125,6 +145,11 @@ void RenderPipeline::SetFragmentShaderCode(wgpu::ShaderModule shaderModule, cons
 	m_fragmentState.entryPoint = entryPoint;
 }
 //-----------------------------------------------------------------------------
+void RenderPipeline::SetPipelineLayout(const PipelineLayout& layout)
+{
+	m_pipelineDescriptor.layout = layout.layout;
+}
+//-----------------------------------------------------------------------------
 bool RenderPipeline::Create(wgpu::Device device)
 {
 	// TODO: в будущем сделать возможность нескольких таргетов
@@ -137,6 +162,8 @@ bool RenderPipeline::Create(wgpu::Device device)
 	m_pipelineDescriptor.multisample.count = 1;
 	m_pipelineDescriptor.multisample.mask = ~0u;
 	m_pipelineDescriptor.multisample.alphaToCoverageEnabled = false;
+
+	m_pipelineDescriptor.depthStencil = &m_depthStencilState;
 
 	pipeline = device.CreateRenderPipeline(&m_pipelineDescriptor);
 
@@ -179,7 +206,9 @@ void RenderPass::Start(wgpu::CommandEncoder& encoder)
 	renderPassDescriptor.colorAttachments = &renderPassColorAttachment;
 
 	if (depthStencilAttachment.view != nullptr)
+	{
 		renderPassDescriptor.depthStencilAttachment = &depthStencilAttachment;
+	}
 
 	renderPass = encoder.BeginRenderPass(&renderPassDescriptor);
 }
