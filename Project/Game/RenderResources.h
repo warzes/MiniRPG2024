@@ -23,12 +23,14 @@ protected:
 class VertexBuffer final : public Buffer
 {
 public:
+	bool Create(const wgpu::Device& device, uint64_t size, const void* data);
 	bool Create(const wgpu::Device& device, uint64_t vertexCount, uint64_t vertexSize, const void* data);
 };
 
 class IndexBuffer final : public Buffer
 {
 public:
+	bool Create(const wgpu::Device& device, uint64_t size, const void* data);
 	bool Create(const wgpu::Device& device, uint64_t indexCount, uint64_t indexSize, const void* data);
 };
 

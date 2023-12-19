@@ -113,6 +113,7 @@
     <ClCompile Include="04_TwoCubes.cpp" />
     <ClCompile Include="Core.cpp" />
     <ClCompile Include="Engine.cpp" />
+    <ClCompile Include="ExampleMesh.cpp" />
     <ClCompile Include="Geometry.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="01_Minimal.cpp">
@@ -435,6 +436,7 @@
     <ClInclude Include="..\3rdparty\tiny_obj_loader.h" />
     <ClInclude Include="Core.h" />
     <ClInclude Include="Engine.h" />
+    <ClInclude Include="ExampleMesh.h" />
     <ClInclude Include="Examples.h" />
     <ClInclude Include="Geometry.h" />
     <ClInclude Include="Render.h" />

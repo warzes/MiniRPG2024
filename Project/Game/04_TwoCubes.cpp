@@ -12,39 +12,93 @@
 #include "RenderResources.h"
 #include "RenderModel.h"
 #include "Examples.h"
+#include "ExampleMesh.h"
 https://github.com/samdauwe/webgpu-native-examples/blob/master/src/examples/two_cubes.c
 //-----------------------------------------------------------------------------
 // Two Cubes
 //  This example shows some of the alignment requirements involved when updating and binding multiple slices of a uniform buffer.It renders two rotating cubes which have transform matrices at different offsets in a uniform buffer.
 //-----------------------------------------------------------------------------
-RenderPipeline pipeline;
-VertexBuffer vb;
-IndexBuffer ib;
-UniformBuffer ub;
-wgpu::BindGroupEntry bindings{};
-BindGroup bindGroup;
-wgpu::BindGroupLayoutEntry bindingLayout{};
-wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
-wgpu::BindGroupDescriptor bindGroupDesc{};
-BindGroupLayout bindGroupLayout;
-wgpu::PipelineLayoutDescriptor layoutDesc{};
-PipelineLayout pipelineLayout;
-VertexBufferLayout layout;
 
-struct Vertex
+#define NUMBER_OF_CUBES 2ull
+// Settings
+static struct 
 {
-	glm::vec3 position;
-	glm::vec3 color;
+	uint64_t number_of_cubes;
+	bool render_bundles;
+} settings = {
+  .number_of_cubes = NUMBER_OF_CUBES,
+  .render_bundles = true,
 };
-struct Uniform
-{
-	glm::mat4 projection = glm::mat4(1.0f);
-	glm::mat4 model = glm::mat4(1.0f);
-	glm::mat4 view = glm::mat4(1.0f);
-} ubo_vs;
-static_assert(sizeof(Uniform) % 16 == 0);
 
-camera_t Camera;
+
+// Cube mesh
+static cube_mesh_t cube_mesh = { 0 };
+
+// Cube struct
+struct cube_t {
+	BindGroup uniform_buffer_bind_group;
+	struct {
+		glm::mat4 model;
+		glm::mat4 model_view_projection;
+		glm::mat4 tmp;
+	} view_mtx;
+};
+static cube_t cubes[NUMBER_OF_CUBES] = {};
+
+BindGroupLayout bindGroupLayout;
+
+
+// Vertex buffer
+static VertexBuffer vertices = {};
+
+// Uniform buffer object
+static struct {
+	UniformBuffer buffer;
+	uint64_t offset;
+	uint64_t size;
+	uint64_t size_with_offset;
+} uniform_buffer = {};
+
+static struct {
+	glm::mat4 projection;
+	glm::mat4 view;
+} view_matrices = {};
+
+// Pipeline
+static RenderPipeline pipeline;
+
+// Render bundle
+static WGPURenderBundle render_bundle;
+
+// Other variables
+static const char* example_title = "Two Cubes";
+static bool prepared = false;
+
+//RenderPipeline pipeline;
+//VertexBuffer vb;
+//IndexBuffer ib;
+//UniformBuffer ub;
+//BindGroup bindGroup;
+//wgpu::BindGroupLayoutEntry bindingLayout{};
+//wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
+//wgpu::PipelineLayoutDescriptor layoutDesc{};
+//PipelineLayout pipelineLayout;
+//VertexBufferLayout layout;
+
+//struct Vertex
+//{
+//	glm::vec3 position;
+//	glm::vec3 color;
+//};
+//struct Uniform
+//{
+//	glm::mat4 projection = glm::mat4(1.0f);
+//	glm::mat4 model = glm::mat4(1.0f);
+//	glm::mat4 view = glm::mat4(1.0f);
+//} ubo_vs;
+//static_assert(sizeof(Uniform) % 16 == 0);
+//
+//camera_t Camera;
 //-----------------------------------------------------------------------------
 struct RenderData
 {
@@ -76,42 +130,75 @@ bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameB
 	if (!initDepthBuffer(m_frameWidth, m_frameHeight))
 		return false;
 
-	{
-		Camera.type = CameraType_LookAt;
-		Camera.SetPosition({ 0.0f, 0.0f, 2.5f });
-		Camera.SetRotation({ 0.0f, 0.0f, 0.0f });
-		Camera.SetPerspective(60.0f, 1024.0f / 768.0f, 0.0f, 256.0f);
-	}
+	cube_mesh_init(&cube_mesh);
+	vertices.Create(m_data->device, sizeof(cube_mesh.vertex_array), cube_mesh.vertex_array);
 
+	// prepare_view_matrices
 	{
-		// Setup vertices (x, y, z, r, g, b)
-		static const Vertex vertex_buffer[] =
+		const float aspect_ratio = (float)1024 / (float)768;
+
+		// Projection matrix
+		view_matrices.projection = glm::perspective(PI2 / 5.0f, aspect_ratio, 1.0f, 100.0f);
+
+
+		// View matrix
+		view_matrices.view = glm::translate(glm::mat4(1.0f), { 0.0f, 0.0f, -7.0f });
+
+		const float start_x = -2.0f, increment_x = 4.0f;
+		cube_t* cube = NULL;
+		float x = 0.0f;
+		for (uint64_t i = 0; i < settings.number_of_cubes; ++i)
 		{
-		  {
-			.position = {1.0f, -1.0f, 0.0f},
-			.color = {1.0f, 0.0f, 0.0f},
-		  },
-		  {
-			.position = {-1.0f, -1.0f, 0.0f},
-			.color = {0.0f, 1.0f, 0.0f},
-		  },
-		  {
-			.position = {0.0f, 1.0f, 0.0f},
-			.color = {0.0f, 0.0f, 1.0f},
-		  },
-		};
-		vb.Create(m_data->device, 3, sizeof(Vertex), vertex_buffer);
+			cube = &cubes[i];
+			x = start_x + i * increment_x;
 
-		// Setup indices
-		static const uint32_t index_buffer[] = {
-		  0, 1, 2
-		};
-		ib.Create(m_data->device, 3, sizeof(uint32_t), index_buffer);
+			// Model matrices
+			cube->view_mtx.model = glm::translate(glm::mat4(1.0f), { x, 0.0f, 0.0f });
+
+			// Model view matrices
+			cube->view_mtx.model_view_projection = glm::mat4(1.0f);
+
+			// Temporary matrices
+			cube->view_mtx.tmp = glm::mat4(1.0f);
+		}
 	}
 
+	// prepare_uniform_buffer
 	{
-		ub.Create(m_data->device, sizeof(ubo_vs), &ubo_vs);
+		// Unform buffer
+		uniform_buffer.size = sizeof(glm::mat4); // 4x4 matrix
+		uniform_buffer.offset = 256; // uniformBindGroup offset must be 256-byte aligned
+		uniform_buffer.size_with_offset
+			= ((settings.number_of_cubes - 1) * uniform_buffer.offset)
+			+ uniform_buffer.size;
+
+		uniform_buffer.buffer.Create(m_data->device, uniform_buffer.size_with_offset, nullptr);
 	}
+
+	// setup_bind_groups
+	{
+		for (uint64_t i = 0; i < settings.number_of_cubes; ++i) 
+		{
+			wgpu::BindGroupEntry bindings{};
+			// Binding 0 : Uniform buffer
+			bindings.binding = 0;
+			bindings.buffer = uniform_buffer.buffer.buffer;
+			bindings.offset = i * uniform_buffer.offset;
+			bindings.size = uniform_buffer.size;
+
+			wgpu::BindGroupDescriptor bindGroupDesc{};
+			bindGroupDesc.layout = bindGroupLayout.layout; // wgpuRenderPipelineGetBindGroupLayout(pipeline, 0) ???
+			bindGroupDesc.entryCount = 1;
+			bindGroupDesc.entries = &bindings;
+			cubes[i].uniform_buffer_bind_group.bindGroup = m_data->device.CreateBindGroup(&bindGroupDesc);
+		}
+	}
+
+	// Vertex buffer layout
+	layout.SetVertexSize(cube_mesh.vertex_size);
+	layout.AddAttrib(wgpu::VertexFormat::Float32x4, cube_mesh.position_offset);
+	layout.AddAttrib(wgpu::VertexFormat::Float32x4, cube_mesh.color_offset);
+
 
 	// Bind group layout
 	{
@@ -133,23 +220,8 @@ bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameB
 		pipelineLayout.layout = m_data->device.CreatePipelineLayout(&layoutDesc);
 	}
 
-	// Bind Group
-	{
-		// Binding 0 : Uniform buffer
-		bindings.binding = 0;
-		bindings.buffer = ub.buffer;
-		bindings.offset = 0;
-		bindings.size = sizeof(Uniform);
 
-		bindGroupDesc.layout = bindGroupLayout.layout;
-		bindGroupDesc.entryCount = 1;
-		bindGroupDesc.entries = &bindings;
-		bindGroup.bindGroup = m_data->device.CreateBindGroup(&bindGroupDesc);
-	}
 
-	layout.SetVertexSize(sizeof(Vertex));
-	layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(Vertex, position));
-	layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(Vertex, color));
 
 	const char* shaderText = R"(
 struct UBO {
@@ -226,6 +298,39 @@ void Render::Destroy()
 //-----------------------------------------------------------------------------
 void Render::Frame()
 {
+	// update_transformation_matrix
+	{
+		const float now = glfwGetTime() / 1000.0f;
+		const float sin_now = sin(now), cos_now = cos(now);
+
+		cube_t* cube = NULL;
+		for (uint64_t i = 0; i < settings.number_of_cubes; ++i)
+		{
+			cube = &cubes[i];
+			cube->view_mtx.tmp = cube->view_mtx.model;
+			if (i % 2 == 0)
+			{
+				cube->view_mtx.tmp = glm::rotate(cube->view_mtx.tmp, 1.0f, { sin_now, cos_now, 0.0f });
+			}
+			else if (i % 2 == 1)
+			{
+				cube->view_mtx.tmp = glm::rotate(cube->view_mtx.tmp, 1.0f, { cos_now, sin_now, 0.0f });
+			}
+			view_matrices.view = cube->view_mtx.tmp * cube->view_mtx.model_view_projection;
+			view_matrices.projection = cube->view_mtx.model_view_projection * cube->view_mtx.model_view_projection;
+		}
+
+		for (uint64_t i = 0; i < settings.number_of_cubes; ++i)
+		{
+			m_data->queue.WriteBuffer(uniform_buffer.buffer.buffer, i * uniform_buffer.offset, &cubes[i].view_mtx.model_view_projection, sizeof(glm::mat4));
+		}
+	}
+
+
+
+
+
+
 	ubo_vs.projection = Camera.matrices.perspective;
 	ubo_vs.view = Camera.matrices.view;
 	ubo_vs.model = glm::mat4(1.0f);

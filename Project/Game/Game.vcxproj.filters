@@ -68,6 +68,9 @@
     <ClCompile Include="04_TwoCubes.cpp">
       <Filter>Engine\TempExample</Filter>
     </ClCompile>
+    <ClCompile Include="ExampleMesh.cpp">
+      <Filter>Engine\TempExample\core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">
@@ -120,6 +123,9 @@
     </Filter>
     <Filter Include="Engine\TempExample">
       <UniqueIdentifier>{af3b2573-a93b-4c7a-aa01-33eded8ee604}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Engine\TempExample\core">
+      <UniqueIdentifier>{ee616539-2d59-4558-ba95-0799930d22b1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -1057,7 +1063,10 @@
       <Filter>Engine</Filter>
     </ClInclude>
     <ClInclude Include="Examples.h">
-      <Filter>Engine\TempExample</Filter>
+      <Filter>Engine\TempExample\core</Filter>
+    </ClInclude>
+    <ClInclude Include="ExampleMesh.h">
+      <Filter>Engine\TempExample\core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

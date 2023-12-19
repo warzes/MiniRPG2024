@@ -1,5 +1,19 @@
 #pragma once
 
+#define PI 3.14159265358979323846f       /* pi */
+#define PI2 6.28318530717958647692f      /* pi * 2 */
+
+inline float random_float_min_max(float min, float max)
+{
+	/* [min, max] */
+	return ((max - min) * ((float)rand() / (float)RAND_MAX)) + min;
+}
+
+inline float random_float(void)
+{
+	return random_float_min_max(0.0f, 1.0f); /* [0, 1.0] */
+}
+
 enum camera_type_enum 
 {
 	CameraType_LookAt = 0,

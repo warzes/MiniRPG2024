@@ -31,9 +31,19 @@ bool Buffer::create(const wgpu::Device& device, wgpu::BufferUsage usage, uint64_
 	return create(device, usage, bufferSize, data);
 }
 //-----------------------------------------------------------------------------
+bool VertexBuffer::Create(const wgpu::Device& device, uint64_t size, const void* data)
+{
+	return create(device, wgpu::BufferUsage::Vertex, size, data);
+}
+//-----------------------------------------------------------------------------
 bool VertexBuffer::Create(const wgpu::Device& device, uint64_t vertexCount, uint64_t vertexSize, const void* data)
 {
 	return create(device, wgpu::BufferUsage::Vertex, vertexCount, vertexSize, data);
+}
+//-----------------------------------------------------------------------------
+bool IndexBuffer::Create(const wgpu::Device& device, uint64_t size, const void* data)
+{
+	return create(device, wgpu::BufferUsage::Index, size, data);
 }
 //-----------------------------------------------------------------------------
 bool IndexBuffer::Create(const wgpu::Device& device, uint64_t indexCount, uint64_t indexSize, const void* data)
