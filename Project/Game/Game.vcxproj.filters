@@ -65,6 +65,9 @@
     <ClCompile Include="03_Triangle.cpp">
       <Filter>Engine\TempExample</Filter>
     </ClCompile>
+    <ClCompile Include="04_TwoCubes.cpp">
+      <Filter>Engine\TempExample</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">
