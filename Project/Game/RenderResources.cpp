@@ -163,7 +163,8 @@ bool RenderPipeline::Create(wgpu::Device device)
 	m_pipelineDescriptor.multisample.mask = ~0u;
 	m_pipelineDescriptor.multisample.alphaToCoverageEnabled = false;
 
-	m_pipelineDescriptor.depthStencil = &m_depthStencilState;
+	if (m_depthStencilState.format != wgpu::TextureFormat::Undefined)
+		m_pipelineDescriptor.depthStencil = &m_depthStencilState;
 
 	pipeline = device.CreateRenderPipeline(&m_pipelineDescriptor);
 

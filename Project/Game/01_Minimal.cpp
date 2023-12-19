@@ -90,7 +90,7 @@ fn fs_main(@location(0) coord: vec2<f32>) -> @location(0) vec4<f32>
 
 	pipeline.SetPrimitiveState();
 	pipeline.SetBlendState(m_data->swapChainFormat);
-	pipeline.SetVertexBufferLayout({});
+	//pipeline.SetVertexBufferLayout({});
 	pipeline.SetVertexShaderCode(shaderModule);
 	pipeline.SetFragmentShaderCode(shaderModule);
 
