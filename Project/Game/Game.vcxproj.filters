@@ -71,6 +71,15 @@
     <ClCompile Include="ExampleMesh.cpp">
       <Filter>Engine\TempExample\core</Filter>
     </ClCompile>
+    <ClCompile Include="05_Cameras.cpp">
+      <Filter>Engine\TempExample</Filter>
+    </ClCompile>
+    <ClCompile Include="06_BindGroups.cpp">
+      <Filter>Engine\TempExample</Filter>
+    </ClCompile>
+    <ClCompile Include="Texture.cpp">
+      <Filter>Engine\TempExample\core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Engine">
@@ -1066,6 +1075,12 @@
       <Filter>Engine\TempExample\core</Filter>
     </ClInclude>
     <ClInclude Include="ExampleMesh.h">
+      <Filter>Engine\TempExample\core</Filter>
+    </ClInclude>
+    <ClInclude Include="gltf_model.h">
+      <Filter>Engine\TempExample\core</Filter>
+    </ClInclude>
+    <ClInclude Include="Texture.h">
       <Filter>Engine\TempExample\core</Filter>
     </ClInclude>
   </ItemGroup>

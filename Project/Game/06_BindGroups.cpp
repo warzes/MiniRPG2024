@@ -12,31 +12,71 @@
 #include "RenderResources.h"
 #include "RenderModel.h"
 #include "Examples.h"
-//-----------------------------------------------------------------------------
-// Triangle
-// Basic and verbose example for getting a colored triangle rendered to the screen using WebGPU. 
-//-----------------------------------------------------------------------------
-RenderPipeline pipeline;
-VertexBuffer vb;
-IndexBuffer ib;
-UniformBuffer ub;
-BindGroup bindGroup;
-VertexBufferLayout layout;
+#include "ExampleMesh.h"
+#include "Texture.h"
+#include "gltf_model.h"
 
-struct Vertex
-{
-	glm::vec3 position;
-	glm::vec3 color;
-};
-struct Uniform
-{
-	glm::mat4 projection = glm::mat4(1.0f);
-	glm::mat4 model = glm::mat4(1.0f);
-	glm::mat4 view = glm::mat4(1.0f);
-} ubo_vs;
-static_assert(sizeof(Uniform) % 16 == 0);
+//-----------------------------------------------------------------------------
+// Using Bind Groups
+// Bind groups are used to pass data to shader binding points. This example sets up bind groups& layouts, creates a single render pipeline based on the bind group layout and renders multiple objects with different bind groups.
+//-----------------------------------------------------------------------------
+
+static bool animate = true;
 
 camera_t Camera;
+
+struct view_matrices_t {
+	glm::mat4 projection;
+	glm::mat4 view;
+	glm::mat4 model;
+};
+
+struct cube_t {
+	view_matrices_t matrices;
+	BindGroup bind_group;
+	texture_t texture;
+	UniformBuffer uniform_buffer;
+	glm::vec3 rotation;
+};
+static cube_t cubes[2] = {};
+
+static gltf_model_t* model = NULL;
+
+static RenderPipeline pipeline;
+static PipelineLayout pipeline_layout;
+
+static BindGroupLayout bind_group_layout;
+
+VertexBufferLayout layout;
+
+// Other variables
+static const char* example_title = "Using Bind Groups";
+static bool prepared = false;
+
+void update_uniform_buffers(wgpu::Queue queue)
+{
+	static glm::vec3 translations[2] = {
+		{-2.0f, 0.0f, 0.0f}, /* Cube 1 */
+		{ 1.5f, 0.5f, 0.0f}, /* Cube 2 */
+	};
+
+	cube_t* cube = NULL;
+	for (uint8_t i = 0; i < 2/*(uint8_t)ARRAY_SIZE(cubes)*/; ++i)
+	{
+		cube = &cubes[i];
+		cube->matrices.model = glm::translate(glm::mat4(1.0f), translations[i]);
+		cube->matrices.model = glm::rotate(cube->matrices.model, glm::radians(cube->rotation[0]), { 1.0f, 0.0f, 0.0f });
+		cube->matrices.model = glm::rotate(cube->matrices.model, glm::radians(cube->rotation[1]), { 0.0f, 1.0f, 0.0f });
+		cube->matrices.model = glm::rotate(cube->matrices.model, glm::radians(cube->rotation[2]), { 0.0f, 0.0f, 1.0f });
+		cube->matrices.model = glm::scale(cube->matrices.model, { 0.25f, 0.25f, 0.25f });
+
+		cube->matrices.projection = Camera.matrices.perspective;
+		cube->matrices.view = Camera.matrices.view;
+
+		queue.WriteBuffer(cube->uniform_buffer.buffer, 0, &cube->matrices, sizeof(view_matrices_t));
+	}
+}
+
 //-----------------------------------------------------------------------------
 struct RenderData
 {
@@ -70,138 +110,196 @@ bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameB
 
 	{
 		Camera.type = CameraType_LookAt;
-		Camera.SetPosition({ 0.0f, 0.0f, 2.5f });
+		Camera.SetPerspective(60.0f, 1024.0f / 768.0f, 0.1f, 512.0f);
 		Camera.SetRotation({ 0.0f, 0.0f, 0.0f });
-		Camera.SetPerspective(60.0f, 1024.0f / 768.0f, 0.0f, 256.0f);
+		Camera.SetPosition({ 0.0f, 0.0f, 5.0f });
 	}
 
+	// load_assets
 	{
-		// Setup vertices (x, y, z, r, g, b)
-		static const Vertex vertex_buffer[] = 
+		const uint32_t gltf_loading_flags
+			= WGPU_GLTF_FileLoadingFlags_PreTransformVertices
+			| WGPU_GLTF_FileLoadingFlags_PreMultiplyVertexColors
+			| WGPU_GLTF_FileLoadingFlags_DontLoadImages;
+
+		wgpu_gltf_model_load_options_t opt{};
+		opt.filename = "../Data/Models/cube.gltf";
+		opt.file_loading_flags = gltf_loading_flags;
+		model = wgpu_gltf_model_load_from_file(&opt);
+		cubes[0].texture = wgpu_create_texture_from_file(m_data->device, "../Data/Textures/crate01_color_height_rgba.ktx", NULL);
+		cubes[1].texture = wgpu_create_texture_from_file(m_data->device, "../Data/Textures/crate02_color_height_rgba.ktx", NULL);
+	}
+
+	// prepare_uniform_buffers
+	{
+		// Vertex shader matrix uniform buffer block
+		for (uint8_t i = 0; i < 2/*(uint8_t)ARRAY_SIZE(cubes)*/; ++i) 
 		{
-		  {
-			.position = {1.0f, -1.0f, 0.0f},
-			.color = {1.0f, 0.0f, 0.0f},
-		  },
-		  {
-			.position = {-1.0f, -1.0f, 0.0f},
-			.color = {0.0f, 1.0f, 0.0f},
-		  },
-		  {
-			.position = {0.0f, 1.0f, 0.0f},
-			.color = {0.0f, 0.0f, 1.0f},
-		  },
-		};
-		vb.Create(m_data->device, 3, sizeof(Vertex), vertex_buffer);
-
-		// Setup indices
-		static const uint32_t index_buffer[] = {
-		  0, 1, 2
-		};
-		ib.Create(m_data->device, 3, sizeof(uint32_t), index_buffer);
+			cube_t* cube = &cubes[i];
+			cube->uniform_buffer.Create(m_data->device, sizeof(view_matrices_t), nullptr);
+		}
 	}
 
-	{
-		ub.Create(m_data->device, sizeof(ubo_vs), &ubo_vs);
-	}
+	// update_uniform_buffers
+	update_uniform_buffers(m_data->queue);
 
-	// Bind group layout
-	BindGroupLayout bindGroupLayout;
+	// setup_bind_groups
 	{
-		wgpu::BindGroupLayoutEntry bindingLayout{};
-		bindingLayout.binding = 0;
-		bindingLayout.visibility = wgpu::ShaderStage::Vertex;
-		bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
-		bindingLayout.buffer.hasDynamicOffset = false;
-		bindingLayout.buffer.minBindingSize = sizeof(Uniform);
+		/*
+		* Bind group layout
+		*
+		* The layout describes the shader bindings and types used for a certain
+		* descriptor layout and as such must match the shader bindings
+		*
+		* Shader bindings used in this example:
+		*
+		* VS:
+		*    layout (set = 0, binding = 0) uniform UBOMatrices
+		*
+		* FS:
+		*    layout (set = 0, binding = 1) uniform texture2D ...;
+		*    layout (set = 0, binding = 2) uniform sampler ...;
+		*/
+		wgpu::BindGroupLayoutEntry bind_group_layout_entries[3] = {};
+
+		// Binding 0: Uniform buffers (used to pass matrices)
+		bind_group_layout_entries[0].binding = 0;
+		bind_group_layout_entries[0].visibility = wgpu::ShaderStage::Vertex;
+		bind_group_layout_entries[0].buffer.type = wgpu::BufferBindingType::Uniform;
+		bind_group_layout_entries[0].buffer.hasDynamicOffset = false;
+		bind_group_layout_entries[0].buffer.minBindingSize = sizeof(view_matrices_t);
+
+		// Binding 1: Image view (used to pass per object texture information)
+		bind_group_layout_entries[1].binding = 1;
+		bind_group_layout_entries[1].visibility = wgpu::ShaderStage::Fragment;
+		bind_group_layout_entries[1].texture.sampleType = wgpu::TextureSampleType::Float;
+		bind_group_layout_entries[1].texture.viewDimension = wgpu::TextureViewDimension::e2D;
+		bind_group_layout_entries[1].texture.multisampled = false;
+
+		// Binding 2: Image sampler (used to pass per object texture information)
+		bind_group_layout_entries[2].binding = 2;
+		bind_group_layout_entries[2].visibility = wgpu::ShaderStage::Fragment;
+		bind_group_layout_entries[2].sampler.type = wgpu::SamplerBindingType::Filtering;
 
 		wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
-		bindGroupLayoutDesc.entryCount = 1;
-		bindGroupLayoutDesc.entries = &bindingLayout;
-		bindGroupLayout.layout = m_data->device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+		bindGroupLayoutDesc.entryCount = 3;
+		bindGroupLayoutDesc.entries = bind_group_layout_entries;
+		bind_group_layout.layout = m_data->device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+
+		/*
+		 * Bind groups
+		 *
+		 * Using the shared bind group layout we will now allocate the bind groups.
+		 *
+		 * Bind groups contain the actual descriptor for the objects (buffers, images)
+		 * used at render time.
+		 */
+		for (uint8_t i = 0; i < 2/*(uint8_t)ARRAY_SIZE(cubes)*/; ++i)
+		{
+			cube_t* cube = &cubes[i];
+
+			wgpu::BindGroupEntry bindings[3] = {};
+			// Binding 0: Object matrices Uniform buffer
+			bindings[0].binding = 0;
+			bindings[0].buffer = cube->uniform_buffer.buffer;
+			bindings[0].offset = 0;
+			bindings[0].size = sizeof(view_matrices_t);
+
+			// Binding 1: Object texture view
+			bindings[1].binding = 1;
+			bindings[1].textureView = cube->texture.view;
+
+			// Binding 2: Object texture sampler
+			bindings[2].binding = 2;
+			bindings[2].sampler = cube->texture.sampler;
+
+			wgpu::BindGroupDescriptor bindGroupDesc{};
+			bindGroupDesc.layout = bind_group_layout.layout;
+			bindGroupDesc.entryCount = 3;// (uint32_t)ARRAY_SIZE(bind_group_entries);
+			bindGroupDesc.entries = bindings;
+			cube->bind_group.bindGroup = m_data->device.CreateBindGroup(&bindGroupDesc);
+		}
 	}
 
-	// Bind Group
+	// prepare_pipelines
 	{
-		wgpu::BindGroupEntry bindings{};
-		// Binding 0 : Uniform buffer
-		bindings.binding = 0;
-		bindings.buffer = ub.buffer;
-		bindings.offset = 0;
-		bindings.size = sizeof(Uniform);
+		//wgpu::PipelineLayoutDescriptor d{};
+		//d.bindGroupLayoutCount = 1;
+		//d.bindGroupLayouts = &bind_group_layout.layout;
+		//wgpu::PipelineLayout layout = m_data->device.CreatePipelineLayout(&d);
 
-		wgpu::BindGroupDescriptor bindGroupDesc{};
-		bindGroupDesc.layout = bindGroupLayout.layout;
-		bindGroupDesc.entryCount = 1;
-		bindGroupDesc.entries = &bindings;
-		bindGroup.bindGroup = m_data->device.CreateBindGroup(&bindGroupDesc);
-	}
+		layout.SetVertexSize(sizeof(gltfVertex));
+		// Location 0: Position
+		layout.AddAttrib(wgpu::VertexFormat::Float32x4, offsetof(gltfVertex, position));
+		// Location 1: Vertex normal
+		layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(gltfVertex, normal));
+		// Location 2: Texture coordinates
+		layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(gltfVertex, color));
+		// Location 3: Vertex color
+		layout.AddAttrib(wgpu::VertexFormat::Float32x2, offsetof(gltfVertex, uv));
 
-	layout.SetVertexSize(sizeof(Vertex));
-	layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(Vertex, position));
-	layout.AddAttrib(wgpu::VertexFormat::Float32x3, offsetof(Vertex, color));
 
-	const char* shaderText = R"(
-struct UBO {
-	projectionMatrix : mat4x4<f32>,
-	modelMatrix      : mat4x4<f32>,
-	viewMatrix       : mat4x4<f32>,
-}
-
-@group(0) @binding(0) var<uniform> ubo : UBO;
-
-struct VertexInput {
-	@location(0) position : vec3<f32>,
-	@location(1) color : vec3<f32>
+		const char* shaderText = R"(
+struct UBOMatrices {
+	projection : mat4x4<f32>,
+	view : mat4x4<f32>,
+	model : mat4x4<f32>,
 };
 
-struct VertexOutput {
+@group(0) @binding(0) var<uniform> uboMatrices : UBOMatrices;
+
+struct Output {
 	@builtin(position) position : vec4<f32>,
-	@location(0) fragColor : vec3<f32>
+	@location(0) normal : vec3<f32>,
+	@location(1) color : vec3<f32>,
+	@location(2) uv : vec2<f32>,
 };
 
 @vertex
-fn vs_main(vertex  : VertexInput) -> VertexOutput
-{
-	var output : VertexOutput;
-	output.position = ubo.projectionMatrix * ubo.viewMatrix * ubo.modelMatrix * vec4<f32>(vertex.position.xyz, 1.0);
-	output.fragColor = vertex.color;
+fn vs_main(
+	@location(0) inPos: vec3<f32>,
+	@location(1) inNormal: vec3<f32>,
+	@location(2) inUV: vec2<f32>,
+	@location(3) inColor: vec3<f32>
+) -> Output {
+	var output: Output;
+	output.normal = inNormal;
+	output.color = inColor;
+	output.uv = inUV;
+	output.position = uboMatrices.projection * uboMatrices.view * uboMatrices.model * vec4<f32>(inPos.xyz, 1.0);
 	return output;
-};
+}
 
-struct FragmentInput {
-	@location(0) fragColor : vec3<f32>
-};
-
-struct FragmentOutput {
-	@location(0) outColor : vec4<f32>
-};
+@group(0) @binding(1) var textureColorMap: texture_2d<f32>;
+@group(0) @binding(2) var samplerColorMap: sampler;
 
 @fragment
-fn fs_main(fragment : FragmentInput) -> FragmentOutput
-{
-	var output : FragmentOutput;
-	output.outColor = vec4<f32>(fragment.fragColor, 1.0);
-	return output;
-};
+fn fs_main(
+	@location(0) inNormal : vec3<f32>,
+	@location(1) inColor : vec3<f32>,
+	@location(2) inUV : vec2<f32>
+) -> @location(0) vec4<f32> {
+	return textureSample(textureColorMap, samplerColorMap, inUV) * vec4<f32>(inColor, 1.0);
+}
 )";
-	wgpu::ShaderModule shaderModule = CreateShaderModule(m_data->device, shaderText);
+		wgpu::ShaderModule shaderModule = CreateShaderModule(m_data->device, shaderText);
 
-	wgpu::DepthStencilState depthStencilState{};
-	depthStencilState.depthCompare = wgpu::CompareFunction::LessEqual;
-	depthStencilState.depthWriteEnabled = true;
-	depthStencilState.format = m_data->depthTextureFormat;
-	// Deactivate the stencil alltogether
-	depthStencilState.stencilReadMask = 0;
-	depthStencilState.stencilWriteMask = 0;
+		wgpu::DepthStencilState depthStencilState{};
+		depthStencilState.depthCompare = wgpu::CompareFunction::LessEqual;
+		depthStencilState.depthWriteEnabled = true;
+		depthStencilState.format = m_data->depthTextureFormat;
+		// Deactivate the stencil alltogether
+		depthStencilState.stencilReadMask = 0;
+		depthStencilState.stencilWriteMask = 0;
 
-	pipeline.SetPrimitiveState(wgpu::PrimitiveTopology::TriangleList, wgpu::IndexFormat::Undefined, wgpu::FrontFace::CCW, wgpu::CullMode::None);
-	pipeline.SetBlendState(m_data->swapChainFormat);
-	pipeline.SetDepthStencilState(depthStencilState);
-	pipeline.SetVertexBufferLayout(layout);
-	pipeline.SetVertexShaderCode(shaderModule);
-	pipeline.SetFragmentShaderCode(shaderModule);
-	pipeline.Create(m_data->device);
+		pipeline.SetPrimitiveState(wgpu::PrimitiveTopology::TriangleList, wgpu::IndexFormat::Undefined, wgpu::FrontFace::CCW, wgpu::CullMode::None);
+		pipeline.SetBlendState(m_data->swapChainFormat);
+		pipeline.SetDepthStencilState(depthStencilState);
+		pipeline.SetVertexBufferLayout(layout);
+		pipeline.SetVertexShaderCode(shaderModule);
+		pipeline.SetFragmentShaderCode(shaderModule);
+		pipeline.Create(m_data->device);
+	}
 
 	return true;
 }
@@ -216,11 +314,22 @@ void Render::Destroy()
 //-----------------------------------------------------------------------------
 void Render::Frame()
 {
-	ubo_vs.projection = Camera.matrices.perspective;
-	ubo_vs.view = Camera.matrices.view;
-	ubo_vs.model = glm::mat4(1.0f);
-	// Map uniform buffer and update it
-	m_data->queue.WriteBuffer(ub.buffer, 0, &ubo_vs, sizeof(ubo_vs));
+	// update_transformation_matrix
+	{
+		if (animate)
+		{
+			cubes[0].rotation[0] += 2.5f * glfwGetTime();
+			if (cubes[0].rotation[0] > 360.0f) 
+			{
+				cubes[0].rotation[0] -= 360.0f;
+			}
+			cubes[1].rotation[1] += 2.0f * glfwGetTime();
+			if (cubes[1].rotation[1] > 360.0f) {
+				cubes[1].rotation[1] -= 360.0f;
+			}
+			update_uniform_buffers(m_data->queue);
+		}
+	}
 
 	wgpu::TextureView backbufferView = m_data->swapChain.GetCurrentTextureView();
 	if (!backbufferView)
@@ -238,9 +347,11 @@ void Render::Frame()
 		renderPass.SetViewport(0.0f, 0.0f, m_frameWidth, m_frameHeight, 0.0f, 1.0f);
 		renderPass.SetScissorRect(0, 0, m_frameWidth, m_frameHeight);
 		renderPass.SetPipeline(pipeline);
-		renderPass.SetBindGroup(0, bindGroup, 0, nullptr);
-		renderPass.SetVertexBuffer(0, vb);
-		renderPass.Draw(3, 1);
+		for (uint64_t i = 0; i < 2; ++i)
+		{
+			renderPass.SetBindGroup(0, cubes[i].bind_group);
+			wgpu_gltf_model_draw(model,{});
+		}
 		renderPass.End();
 	}
 
