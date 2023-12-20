@@ -274,6 +274,19 @@ void RenderPass::End()
 	renderPass.End();
 }
 //-----------------------------------------------------------------------------
+void RenderPass::ExecuteBundles(size_t bundleCount, const RenderBundle* bundles) const
+{
+	if (bundleCount == 1)
+	{
+		renderPass.ExecuteBundles(1, &bundles->bundle);
+	}
+	else
+	{
+		// TODO:
+		Fatal("TODO - нужно помещать в массив и прогонять");
+	}
+}
+//-----------------------------------------------------------------------------
 void RenderPass::Draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) const
 {
 	renderPass.Draw(vertexCount, instanceCount, firstVertex, firstInstance);

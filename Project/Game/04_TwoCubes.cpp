@@ -13,13 +13,13 @@
 #include "RenderModel.h"
 #include "Examples.h"
 #include "ExampleMesh.h"
-https://github.com/samdauwe/webgpu-native-examples/blob/master/src/examples/two_cubes.c
+
 //-----------------------------------------------------------------------------
 // Two Cubes
 //  This example shows some of the alignment requirements involved when updating and binding multiple slices of a uniform buffer.It renders two rotating cubes which have transform matrices at different offsets in a uniform buffer.
 //-----------------------------------------------------------------------------
 
-#define NUMBER_OF_CUBES 2ull
+#define NUMBER_OF_CUBES 3ull
 // Settings
 static struct 
 {
@@ -27,7 +27,7 @@ static struct
 	bool render_bundles;
 } settings = {
   .number_of_cubes = NUMBER_OF_CUBES,
-  .render_bundles = true,
+  .render_bundles = false,
 };
 
 
@@ -44,8 +44,6 @@ struct cube_t {
 	} view_mtx;
 };
 static cube_t cubes[NUMBER_OF_CUBES] = {};
-
-BindGroupLayout bindGroupLayout;
 
 
 // Vertex buffer
@@ -68,37 +66,12 @@ static struct {
 static RenderPipeline pipeline;
 
 // Render bundle
-static WGPURenderBundle render_bundle;
+static RenderBundle render_bundle;
 
 // Other variables
 static const char* example_title = "Two Cubes";
 static bool prepared = false;
 
-//RenderPipeline pipeline;
-//VertexBuffer vb;
-//IndexBuffer ib;
-//UniformBuffer ub;
-//BindGroup bindGroup;
-//wgpu::BindGroupLayoutEntry bindingLayout{};
-//wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
-//wgpu::PipelineLayoutDescriptor layoutDesc{};
-//PipelineLayout pipelineLayout;
-//VertexBufferLayout layout;
-
-//struct Vertex
-//{
-//	glm::vec3 position;
-//	glm::vec3 color;
-//};
-//struct Uniform
-//{
-//	glm::mat4 projection = glm::mat4(1.0f);
-//	glm::mat4 model = glm::mat4(1.0f);
-//	glm::mat4 view = glm::mat4(1.0f);
-//} ubo_vs;
-//static_assert(sizeof(Uniform) % 16 == 0);
-//
-//camera_t Camera;
 //-----------------------------------------------------------------------------
 struct RenderData
 {
@@ -133,6 +106,63 @@ bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameB
 	cube_mesh_init(&cube_mesh);
 	vertices.Create(m_data->device, sizeof(cube_mesh.vertex_array), cube_mesh.vertex_array);
 
+	const char* shaderText = R"(
+struct Uniforms {
+	modelViewProjectionMatrix : mat4x4<f32>,
+}
+@binding(0) @group(0) var<uniform> uniforms : Uniforms;
+
+struct VertexOutput {
+	@builtin(position) Position : vec4<f32>,
+	@location(0) fragUV : vec2<f32>,
+	@location(1) fragPosition: vec4<f32>,
+}
+
+@vertex
+fn vs_main(
+	@location(0) position : vec4<f32>,
+	@location(1) uv : vec2<f32>
+) -> VertexOutput {
+	var output : VertexOutput;
+	output.Position = uniforms.modelViewProjectionMatrix * position;
+	output.fragUV = uv;
+	output.fragPosition = 0.5 * (position + vec4(1.0, 1.0, 1.0, 1.0));
+	return output;
+}
+
+@fragment
+fn fs_main(
+	@location(0) fragUV: vec2<f32>,
+	@location(1) fragPosition: vec4<f32>
+) -> @location(0) vec4<f32> {
+	return fragPosition;
+}
+)";
+	wgpu::ShaderModule shaderModule = CreateShaderModule(m_data->device, shaderText);
+
+	wgpu::DepthStencilState depthStencilState{};
+	depthStencilState.depthCompare = wgpu::CompareFunction::LessEqual;
+	depthStencilState.depthWriteEnabled = true;
+	depthStencilState.format = m_data->depthTextureFormat;
+	// Deactivate the stencil alltogether
+	depthStencilState.stencilReadMask = 0;
+	depthStencilState.stencilWriteMask = 0;
+
+	// Vertex buffer layout
+	VertexBufferLayout layout;
+	layout.SetVertexSize(cube_mesh.vertex_size);
+	layout.AddAttrib(wgpu::VertexFormat::Float32x4, cube_mesh.position_offset);
+	layout.AddAttrib(wgpu::VertexFormat::Float32x4, cube_mesh.color_offset);
+
+	pipeline.SetPrimitiveState(wgpu::PrimitiveTopology::TriangleList, wgpu::IndexFormat::Undefined, wgpu::FrontFace::CCW, wgpu::CullMode::None);
+	pipeline.SetBlendState(m_data->swapChainFormat);
+	pipeline.SetDepthStencilState(depthStencilState);
+	pipeline.SetVertexBufferLayout(layout);
+	pipeline.SetVertexShaderCode(shaderModule);
+	pipeline.SetFragmentShaderCode(shaderModule);
+	pipeline.Create(m_data->device);
+
+
 	// prepare_view_matrices
 	{
 		const float aspect_ratio = (float)1024 / (float)768;
@@ -142,7 +172,7 @@ bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameB
 
 
 		// View matrix
-		view_matrices.view = glm::translate(glm::mat4(1.0f), { 0.0f, 0.0f, -7.0f });
+		view_matrices.view = glm::translate(glm::mat4(1.0f), { 0.0f, 0.0f, 7.0f });
 
 		const float start_x = -2.0f, increment_x = 4.0f;
 		cube_t* cube = NULL;
@@ -187,103 +217,35 @@ bool Render::Create(void* glfwWindow, unsigned frameBufferWidth, unsigned frameB
 			bindings.size = uniform_buffer.size;
 
 			wgpu::BindGroupDescriptor bindGroupDesc{};
-			bindGroupDesc.layout = bindGroupLayout.layout; // wgpuRenderPipelineGetBindGroupLayout(pipeline, 0) ???
+			bindGroupDesc.layout = pipeline.pipeline.GetBindGroupLayout(0);
 			bindGroupDesc.entryCount = 1;
 			bindGroupDesc.entries = &bindings;
 			cubes[i].uniform_buffer_bind_group.bindGroup = m_data->device.CreateBindGroup(&bindGroupDesc);
 		}
-	}
+	}	
 
-	// Vertex buffer layout
-	layout.SetVertexSize(cube_mesh.vertex_size);
-	layout.AddAttrib(wgpu::VertexFormat::Float32x4, cube_mesh.position_offset);
-	layout.AddAttrib(wgpu::VertexFormat::Float32x4, cube_mesh.color_offset);
-
-
-	// Bind group layout
+	// prepare_render_bundle_encoder
 	{
-		bindingLayout.binding = 0;
-		bindingLayout.visibility = wgpu::ShaderStage::Vertex;
-		bindingLayout.buffer.type = wgpu::BufferBindingType::Uniform;
-		bindingLayout.buffer.hasDynamicOffset = false;
-		bindingLayout.buffer.minBindingSize = sizeof(Uniform);
+		wgpu::TextureFormat color_formats[1] = { m_data->swapChainFormat };
+		wgpu::RenderBundleEncoderDescriptor encoderDesc{};
+		encoderDesc.colorFormatCount = 1;//(uint32_t)ARRAY_SIZE(color_formats);
+		encoderDesc.colorFormats = color_formats;
+		encoderDesc.depthStencilFormat = m_data->depthTextureFormat;
+		encoderDesc.sampleCount = 1;
 
-		bindGroupLayoutDesc.entryCount = 1;
-		bindGroupLayoutDesc.entries = &bindingLayout;
-		bindGroupLayout.layout = m_data->device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+		wgpu::RenderBundleEncoder render_bundle_encoder = m_data->device.CreateRenderBundleEncoder(&encoderDesc);
+		if (render_bundle_encoder)
+		{
+			render_bundle_encoder.SetPipeline(pipeline.pipeline);
+			render_bundle_encoder.SetVertexBuffer(0, vertices.buffer);
+			for (uint64_t i = 0; i < settings.number_of_cubes; ++i) {
+				render_bundle_encoder.SetBindGroup(0, cubes[i].uniform_buffer_bind_group.bindGroup);
+				render_bundle_encoder.Draw(cube_mesh.vertex_count, 1, 0, 0);
+			}
+		}
+		render_bundle.bundle = render_bundle_encoder.Finish();
+		render_bundle_encoder = nullptr;
 	}
-
-	// Create the pipeline layout
-	{
-		layoutDesc.bindGroupLayoutCount = 1;
-		layoutDesc.bindGroupLayouts = &bindGroupLayout.layout;
-		pipelineLayout.layout = m_data->device.CreatePipelineLayout(&layoutDesc);
-	}
-
-
-
-
-	const char* shaderText = R"(
-struct UBO {
-	projectionMatrix : mat4x4<f32>,
-	modelMatrix      : mat4x4<f32>,
-	viewMatrix       : mat4x4<f32>,
-}
-
-@group(0) @binding(0) var<uniform> ubo : UBO;
-
-struct VertexInput {
-	@location(0) position : vec3<f32>,
-	@location(1) color : vec3<f32>
-};
-
-struct VertexOutput {
-	@builtin(position) position : vec4<f32>,
-	@location(0) fragColor : vec3<f32>
-};
-
-@vertex
-fn vs_main(vertex  : VertexInput) -> VertexOutput
-{
-	var output : VertexOutput;
-	output.position = ubo.projectionMatrix * ubo.viewMatrix * ubo.modelMatrix * vec4<f32>(vertex.position.xyz, 1.0);
-	output.fragColor = vertex.color;
-	return output;
-};
-
-struct FragmentInput {
-	@location(0) fragColor : vec3<f32>
-};
-
-struct FragmentOutput {
-	@location(0) outColor : vec4<f32>
-};
-
-@fragment
-fn fs_main(fragment : FragmentInput) -> FragmentOutput
-{
-	var output : FragmentOutput;
-	output.outColor = vec4<f32>(fragment.fragColor, 1.0);
-	return output;
-};
-)";
-	wgpu::ShaderModule shaderModule = CreateShaderModule(m_data->device, shaderText);
-
-	wgpu::DepthStencilState depthStencilState{};
-	depthStencilState.depthCompare = wgpu::CompareFunction::LessEqual;
-	depthStencilState.depthWriteEnabled = true;
-	depthStencilState.format = m_data->depthTextureFormat;
-	// Deactivate the stencil alltogether
-	depthStencilState.stencilReadMask = 0;
-	depthStencilState.stencilWriteMask = 0;
-
-	pipeline.SetPrimitiveState(wgpu::PrimitiveTopology::TriangleList, wgpu::IndexFormat::Undefined, wgpu::FrontFace::CCW, wgpu::CullMode::None);
-	pipeline.SetBlendState(m_data->swapChainFormat);
-	pipeline.SetDepthStencilState(depthStencilState);
-	pipeline.SetVertexBufferLayout(layout);
-	pipeline.SetVertexShaderCode(shaderModule);
-	pipeline.SetFragmentShaderCode(shaderModule);
-	pipeline.Create(m_data->device);
 
 	return true;
 }
@@ -300,7 +262,8 @@ void Render::Frame()
 {
 	// update_transformation_matrix
 	{
-		const float now = glfwGetTime() / 1000.0f;
+
+		const float now = glfwGetTime();
 		const float sin_now = sin(now), cos_now = cos(now);
 
 		cube_t* cube = NULL;
@@ -316,8 +279,7 @@ void Render::Frame()
 			{
 				cube->view_mtx.tmp = glm::rotate(cube->view_mtx.tmp, 1.0f, { cos_now, sin_now, 0.0f });
 			}
-			view_matrices.view = cube->view_mtx.tmp * cube->view_mtx.model_view_projection;
-			view_matrices.projection = cube->view_mtx.model_view_projection * cube->view_mtx.model_view_projection;
+			cube->view_mtx.model_view_projection = view_matrices.projection * view_matrices.view * cube->view_mtx.tmp;
 		}
 
 		for (uint64_t i = 0; i < settings.number_of_cubes; ++i)
@@ -325,17 +287,6 @@ void Render::Frame()
 			m_data->queue.WriteBuffer(uniform_buffer.buffer.buffer, i * uniform_buffer.offset, &cubes[i].view_mtx.model_view_projection, sizeof(glm::mat4));
 		}
 	}
-
-
-
-
-
-
-	ubo_vs.projection = Camera.matrices.perspective;
-	ubo_vs.view = Camera.matrices.view;
-	ubo_vs.model = glm::mat4(1.0f);
-	// Map uniform buffer and update it
-	m_data->queue.WriteBuffer(ub.buffer, 0, &ubo_vs, sizeof(ubo_vs));
 
 	wgpu::TextureView backbufferView = m_data->swapChain.GetCurrentTextureView();
 	if (!backbufferView)
@@ -350,13 +301,22 @@ void Render::Frame()
 	wgpu::CommandEncoder encoder = m_data->device.CreateCommandEncoder();
 	{
 		renderPass.Start(encoder);
-		renderPass.SetViewport(0.0f, 0.0f, m_frameWidth, m_frameHeight, 0.0f, 1.0f);
-		renderPass.SetScissorRect(0, 0, m_frameWidth, m_frameHeight);
-		renderPass.SetPipeline(pipeline);
-		renderPass.SetBindGroup(0, bindGroup, 0, nullptr);
-		renderPass.SetVertexBuffer(0, vb);
-		//renderPass.SetIndexBuffer(ib, wgpu::IndexFormat::Uint32);
-		renderPass.Draw(3, 1);
+		if (settings.render_bundles)
+		{
+			renderPass.ExecuteBundles(1, &render_bundle);
+		}
+		else 
+		{
+			renderPass.SetViewport(0.0f, 0.0f, m_frameWidth, m_frameHeight, 0.0f, 1.0f);
+			renderPass.SetScissorRect(0, 0, m_frameWidth, m_frameHeight);
+			renderPass.SetPipeline(pipeline);
+			renderPass.SetVertexBuffer(0, vertices);
+			for (uint64_t i = 0; i < settings.number_of_cubes; ++i)
+			{
+				renderPass.SetBindGroup(0, cubes[i].uniform_buffer_bind_group);
+				renderPass.Draw(cube_mesh.vertex_count, 1, 0, 0);
+			}
+		}
 		renderPass.End();
 	}
 

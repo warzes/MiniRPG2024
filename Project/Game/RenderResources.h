@@ -79,6 +79,12 @@ private:
 	uint64_t m_size = 0;
 };
 
+class RenderBundle
+{
+public:
+	wgpu::RenderBundle bundle = nullptr;
+};
+
 class RenderPipeline
 {
 public:
@@ -145,6 +151,8 @@ public:
 	void DrawIndirect(const Buffer& indirectBuffer, uint64_t indirectOffset) const;
 
 	void End();
+
+	void ExecuteBundles(size_t bundleCount, const RenderBundle* bundles) const;
 
 	wgpu::RenderPassColorAttachment renderPassColorAttachment{};
 	wgpu::RenderPassDepthStencilAttachment depthStencilAttachment{};
